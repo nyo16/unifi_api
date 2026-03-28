@@ -23,6 +23,7 @@ defmodule UnifiApi.Protect.Viewers do
 
       {:ok, viewers} = UnifiApi.Protect.Viewers.list(client)
   """
+  @spec list(Req.Request.t()) :: {:ok, term()} | {:error, term()}
   def list(client) do
     Client.get(client, "#{prefix()}/v1/viewers")
   end
@@ -36,6 +37,7 @@ defmodule UnifiApi.Protect.Viewers do
       viewer["name"]  # => "Office Display"
       viewer["state"] # => "CONNECTED"
   """
+  @spec get(Req.Request.t(), String.t()) :: {:ok, term()} | {:error, term()}
   def get(client, id) do
     Client.get(client, "#{prefix()}/v1/viewers/#{id}")
   end
@@ -49,6 +51,7 @@ defmodule UnifiApi.Protect.Viewers do
         liveview: liveview_id
       })
   """
+  @spec update(Req.Request.t(), String.t(), map()) :: {:ok, term()} | {:error, term()}
   def update(client, id, body) do
     Client.patch(client, "#{prefix()}/v1/viewers/#{id}", body)
   end

@@ -42,6 +42,13 @@ defmodule UnifiApi.ClientTest do
 
       assert {:ok, %{"path" => "/v1/info"}} = Client.get(client, "/v1/info")
     end
+
+    test "respects verify_ssl: true" do
+      client = Client.new(base_url: "https://10.0.0.1", api_key: "abc", verify_ssl: true)
+      assert %Req.Request{} = client
+      # When verify_ssl is true, connect_options should be empty (no verify_none)
+      assert client.options.connect_options == []
+    end
   end
 
   describe "get/3" do
@@ -60,7 +67,7 @@ defmodule UnifiApi.ClientTest do
         test_client(fn conn ->
           conn
           |> Plug.Conn.put_resp_content_type("application/json")
-          |> Plug.Conn.send_resp(404, Jason.encode!(%{"error" => "not found"}))
+          |> Plug.Conn.send_resp(404, JSON.encode!(%{"error" => "not found"}))
         end)
 
       assert {:error, {404, %{"error" => "not found"}}} = Client.get(client, "/v1/missing")
@@ -71,7 +78,7 @@ defmodule UnifiApi.ClientTest do
         test_client(fn conn ->
           conn
           |> Plug.Conn.put_resp_content_type("application/json")
-          |> Plug.Conn.send_resp(500, Jason.encode!(%{"error" => "internal"}))
+          |> Plug.Conn.send_resp(500, JSON.encode!(%{"error" => "internal"}))
         end)
 
       assert {:error, {500, _body}} = Client.get(client, "/v1/broken")
@@ -87,6 +94,17 @@ defmodule UnifiApi.ClientTest do
       assert {:ok, %{"offset" => "10", "limit" => "50", "filter" => "name.eq(foo)"}} =
                Client.get(client, "/v1/test", offset: 10, limit: 50, filter: "name.eq(foo)")
     end
+
+    test "returns {:error, {401, body}} on unauthorized" do
+      client =
+        test_client(fn conn ->
+          conn
+          |> Plug.Conn.put_resp_content_type("application/json")
+          |> Plug.Conn.send_resp(401, JSON.encode!(%{"error" => "unauthorized"}))
+        end)
+
+      assert {:error, {401, %{"error" => "unauthorized"}}} = Client.get(client, "/v1/test")
+    end
   end
 
   describe "post/4" do
@@ -95,12 +113,24 @@ defmodule UnifiApi.ClientTest do
         test_client(fn conn ->
           assert conn.method == "POST"
           {:ok, raw, conn} = Plug.Conn.read_body(conn)
-          body = Jason.decode!(raw)
+          body = JSON.decode!(raw)
           Req.Test.json(conn, %{"received" => body})
         end)
 
       assert {:ok, %{"received" => %{"name" => "test"}}} =
                Client.post(client, "/v1/resource", %{name: "test"})
+    end
+
+    test "returns {:error, {status, body}} on error" do
+      client =
+        test_client(fn conn ->
+          conn
+          |> Plug.Conn.put_resp_content_type("application/json")
+          |> Plug.Conn.send_resp(422, JSON.encode!(%{"error" => "validation failed"}))
+        end)
+
+      assert {:error, {422, %{"error" => "validation failed"}}} =
+               Client.post(client, "/v1/resource", %{name: ""})
     end
   end
 
@@ -110,7 +140,7 @@ defmodule UnifiApi.ClientTest do
         test_client(fn conn ->
           assert conn.method == "PUT"
           {:ok, raw, conn} = Plug.Conn.read_body(conn)
-          body = Jason.decode!(raw)
+          body = JSON.decode!(raw)
           Req.Test.json(conn, %{"received" => body})
         end)
 
@@ -125,7 +155,7 @@ defmodule UnifiApi.ClientTest do
         test_client(fn conn ->
           assert conn.method == "PATCH"
           {:ok, raw, conn} = Plug.Conn.read_body(conn)
-          body = Jason.decode!(raw)
+          body = JSON.decode!(raw)
           Req.Test.json(conn, %{"received" => body})
         end)
 
@@ -165,7 +195,7 @@ defmodule UnifiApi.ClientTest do
         test_client(fn conn ->
           conn
           |> Plug.Conn.put_resp_content_type("application/json")
-          |> Plug.Conn.send_resp(403, Jason.encode!(%{"error" => "forbidden"}))
+          |> Plug.Conn.send_resp(403, JSON.encode!(%{"error" => "forbidden"}))
         end)
 
       assert {:error, {403, _}} = Client.get_raw(client, "/v1/snapshot")
@@ -268,15 +298,48 @@ defmodule UnifiApi.ClientTest do
       assert length(result) == 3
     end
 
-    test "raises on API error" do
+    test "raises StreamError on API error" do
       client =
         test_client(fn conn ->
           conn
           |> Plug.Conn.put_resp_content_type("application/json")
-          |> Plug.Conn.send_resp(500, Jason.encode!(%{"error" => "boom"}))
+          |> Plug.Conn.send_resp(500, JSON.encode!(%{"error" => "boom"}))
         end)
 
-      assert_raise RuntimeError, ~r/stream failed/, fn ->
+      assert_raise UnifiApi.StreamError, ~r/stream request to/, fn ->
+        Client.stream(client, "/v1/test") |> Enum.to_list()
+      end
+    end
+
+    test "raises StreamError on error mid-stream (after successful first page)" do
+      page_count = :counters.new(1, [:atomics])
+
+      client =
+        test_client(fn conn ->
+          :counters.add(page_count, 1, 1)
+          count = :counters.get(page_count, 1)
+
+          if count == 1 do
+            Req.Test.json(conn, Enum.map(1..3, &%{"id" => &1}))
+          else
+            conn
+            |> Plug.Conn.put_resp_content_type("application/json")
+            |> Plug.Conn.send_resp(500, JSON.encode!(%{"error" => "boom"}))
+          end
+        end)
+
+      assert_raise UnifiApi.StreamError, ~r/stream request to/, fn ->
+        Client.stream(client, "/v1/test", limit: 3) |> Enum.to_list()
+      end
+    end
+
+    test "raises StreamError on non-list response" do
+      client =
+        test_client(fn conn ->
+          Req.Test.json(conn, %{"message" => "not a list"})
+        end)
+
+      assert_raise UnifiApi.StreamError, ~r/stream request to/, fn ->
         Client.stream(client, "/v1/test") |> Enum.to_list()
       end
     end

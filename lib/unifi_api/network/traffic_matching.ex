@@ -25,6 +25,7 @@ defmodule UnifiApi.Network.TrafficMatching do
       {:ok, lists} = UnifiApi.Network.TrafficMatching.list(client, site_id)
       # => [%{"id" => "...", "type" => "PORTS", "name" => "HTTP/HTTPS"}]
   """
+  @spec list(Req.Request.t(), String.t(), keyword()) :: {:ok, term()} | {:error, term()}
   def list(client, site_id, opts \\ []) do
     Client.get(client, "#{prefix()}/v1/sites/#{site_id}/traffic-matching-lists", opts)
   end
@@ -37,6 +38,7 @@ defmodule UnifiApi.Network.TrafficMatching do
       UnifiApi.Network.TrafficMatching.stream(client, site_id)
       |> Enum.to_list()
   """
+  @spec stream(Req.Request.t(), String.t(), keyword()) :: Enumerable.t()
   def stream(client, site_id, opts \\ []) do
     Client.stream(client, "#{prefix()}/v1/sites/#{site_id}/traffic-matching-lists", opts)
   end

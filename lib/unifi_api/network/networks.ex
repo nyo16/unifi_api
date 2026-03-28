@@ -19,6 +19,7 @@ defmodule UnifiApi.Network.Networks do
 
       {:ok, networks} = UnifiApi.Network.Networks.list(client, site_id)
   """
+  @spec list(Req.Request.t(), String.t(), keyword()) :: {:ok, term()} | {:error, term()}
   def list(client, site_id, opts \\ []) do
     Client.get(client, "#{prefix()}/v1/sites/#{site_id}/networks", opts)
   end
@@ -32,6 +33,7 @@ defmodule UnifiApi.Network.Networks do
       network["name"]   # => "LAN"
       network["vlanId"] # => 1
   """
+  @spec get(Req.Request.t(), String.t(), String.t()) :: {:ok, term()} | {:error, term()}
   def get(client, site_id, network_id) do
     Client.get(client, "#{prefix()}/v1/sites/#{site_id}/networks/#{network_id}")
   end
@@ -46,6 +48,7 @@ defmodule UnifiApi.Network.Networks do
         vlanId: 100
       })
   """
+  @spec create(Req.Request.t(), String.t(), map()) :: {:ok, term()} | {:error, term()}
   def create(client, site_id, body) do
     Client.post(client, "#{prefix()}/v1/sites/#{site_id}/networks", body)
   end
@@ -59,6 +62,7 @@ defmodule UnifiApi.Network.Networks do
         name: "Updated Network Name"
       })
   """
+  @spec update(Req.Request.t(), String.t(), String.t(), map()) :: {:ok, term()} | {:error, term()}
   def update(client, site_id, network_id, body) do
     Client.put(client, "#{prefix()}/v1/sites/#{site_id}/networks/#{network_id}", body)
   end
@@ -70,6 +74,8 @@ defmodule UnifiApi.Network.Networks do
 
       {:ok, _} = UnifiApi.Network.Networks.delete(client, site_id, network_id)
   """
+  @spec delete(Req.Request.t(), String.t(), String.t(), keyword()) ::
+          {:ok, term()} | {:error, term()}
   def delete(client, site_id, network_id, opts \\ []) do
     Client.delete(client, "#{prefix()}/v1/sites/#{site_id}/networks/#{network_id}", opts)
   end
@@ -87,6 +93,7 @@ defmodule UnifiApi.Network.Networks do
       UnifiApi.Network.Networks.stream(client, site_id)
       |> Enum.map(& &1["name"])
   """
+  @spec stream(Req.Request.t(), String.t(), keyword()) :: Enumerable.t()
   def stream(client, site_id, opts \\ []) do
     Client.stream(client, "#{prefix()}/v1/sites/#{site_id}/networks", opts)
   end

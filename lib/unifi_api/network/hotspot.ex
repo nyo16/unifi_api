@@ -26,6 +26,7 @@ defmodule UnifiApi.Network.Hotspot do
 
       {:ok, vouchers} = UnifiApi.Network.Hotspot.list_vouchers(client, site_id)
   """
+  @spec list_vouchers(Req.Request.t(), String.t(), keyword()) :: {:ok, term()} | {:error, term()}
   def list_vouchers(client, site_id, opts \\ []) do
     Client.get(client, "#{prefix()}/v1/sites/#{site_id}/hotspot/vouchers", opts)
   end
@@ -39,6 +40,7 @@ defmodule UnifiApi.Network.Hotspot do
       voucher["code"]    # => "12345-67890"
       voucher["expired"] # => false
   """
+  @spec get_voucher(Req.Request.t(), String.t(), String.t()) :: {:ok, term()} | {:error, term()}
   def get_voucher(client, site_id, voucher_id) do
     Client.get(client, "#{prefix()}/v1/sites/#{site_id}/hotspot/vouchers/#{voucher_id}")
   end
@@ -68,6 +70,7 @@ defmodule UnifiApi.Network.Hotspot do
         txRateLimitKbps: 1000
       })
   """
+  @spec create_vouchers(Req.Request.t(), String.t(), map()) :: {:ok, term()} | {:error, term()}
   def create_vouchers(client, site_id, body) do
     Client.post(client, "#{prefix()}/v1/sites/#{site_id}/hotspot/vouchers", body)
   end
@@ -79,6 +82,7 @@ defmodule UnifiApi.Network.Hotspot do
 
       {:ok, _} = UnifiApi.Network.Hotspot.delete_vouchers(client, site_id)
   """
+  @spec delete_vouchers(Req.Request.t(), String.t()) :: {:ok, term()} | {:error, term()}
   def delete_vouchers(client, site_id) do
     Client.delete(client, "#{prefix()}/v1/sites/#{site_id}/hotspot/vouchers")
   end
@@ -90,6 +94,8 @@ defmodule UnifiApi.Network.Hotspot do
 
       {:ok, _} = UnifiApi.Network.Hotspot.delete_voucher(client, site_id, voucher_id)
   """
+  @spec delete_voucher(Req.Request.t(), String.t(), String.t()) ::
+          {:ok, term()} | {:error, term()}
   def delete_voucher(client, site_id, voucher_id) do
     Client.delete(client, "#{prefix()}/v1/sites/#{site_id}/hotspot/vouchers/#{voucher_id}")
   end
@@ -104,6 +110,7 @@ defmodule UnifiApi.Network.Hotspot do
       |> Stream.reject(& &1["expired"])
       |> Enum.map(& &1["code"])
   """
+  @spec stream_vouchers(Req.Request.t(), String.t(), keyword()) :: Enumerable.t()
   def stream_vouchers(client, site_id, opts \\ []) do
     Client.stream(client, "#{prefix()}/v1/sites/#{site_id}/hotspot/vouchers", opts)
   end

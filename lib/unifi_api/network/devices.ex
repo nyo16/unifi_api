@@ -20,6 +20,7 @@ defmodule UnifiApi.Network.Devices do
       {:ok, devices} = UnifiApi.Network.Devices.list(client, site_id)
       {:ok, devices} = UnifiApi.Network.Devices.list(client, site_id, limit: 100)
   """
+  @spec list(Req.Request.t(), String.t(), keyword()) :: {:ok, term()} | {:error, term()}
   def list(client, site_id, opts \\ []) do
     Client.get(client, "#{prefix()}/v1/sites/#{site_id}/devices", opts)
   end
@@ -33,6 +34,7 @@ defmodule UnifiApi.Network.Devices do
       device["name"]   # => "US-24-250W"
       device["state"]  # => "CONNECTED"
   """
+  @spec get(Req.Request.t(), String.t(), String.t()) :: {:ok, term()} | {:error, term()}
   def get(client, site_id, device_id) do
     Client.get(client, "#{prefix()}/v1/sites/#{site_id}/devices/#{device_id}")
   end
@@ -44,6 +46,7 @@ defmodule UnifiApi.Network.Devices do
 
       {:ok, _} = UnifiApi.Network.Devices.adopt(client, site_id, %{mac: "aa:bb:cc:dd:ee:ff"})
   """
+  @spec adopt(Req.Request.t(), String.t(), map(), keyword()) :: {:ok, term()} | {:error, term()}
   def adopt(client, site_id, body, opts \\ []) do
     Client.post(client, "#{prefix()}/v1/sites/#{site_id}/devices", body, opts)
   end
@@ -55,6 +58,7 @@ defmodule UnifiApi.Network.Devices do
 
       {:ok, _} = UnifiApi.Network.Devices.remove(client, site_id, device_id)
   """
+  @spec remove(Req.Request.t(), String.t(), String.t()) :: {:ok, term()} | {:error, term()}
   def remove(client, site_id, device_id) do
     Client.delete(client, "#{prefix()}/v1/sites/#{site_id}/devices/#{device_id}")
   end
@@ -66,6 +70,8 @@ defmodule UnifiApi.Network.Devices do
 
       {:ok, stats} = UnifiApi.Network.Devices.get_statistics(client, site_id, device_id)
   """
+  @spec get_statistics(Req.Request.t(), String.t(), String.t()) ::
+          {:ok, term()} | {:error, term()}
   def get_statistics(client, site_id, device_id) do
     Client.get(client, "#{prefix()}/v1/sites/#{site_id}/devices/#{device_id}/statistics/latest")
   end
@@ -78,6 +84,8 @@ defmodule UnifiApi.Network.Devices do
       {:ok, _} = UnifiApi.Network.Devices.execute_action(client, site_id, device_id, %{action: "restart"})
       {:ok, _} = UnifiApi.Network.Devices.execute_action(client, site_id, device_id, %{action: "locate"})
   """
+  @spec execute_action(Req.Request.t(), String.t(), String.t(), map()) ::
+          {:ok, term()} | {:error, term()}
   def execute_action(client, site_id, device_id, body) do
     Client.post(client, "#{prefix()}/v1/sites/#{site_id}/devices/#{device_id}/actions", body)
   end
@@ -90,6 +98,8 @@ defmodule UnifiApi.Network.Devices do
       # Cycle PoE on port 3
       {:ok, _} = UnifiApi.Network.Devices.execute_port_action(client, site_id, device_id, 3, %{action: "cycle"})
   """
+  @spec execute_port_action(Req.Request.t(), String.t(), String.t(), non_neg_integer(), map()) ::
+          {:ok, term()} | {:error, term()}
   def execute_port_action(client, site_id, device_id, port_idx, body) do
     Client.post(
       client,
@@ -109,6 +119,7 @@ defmodule UnifiApi.Network.Devices do
 
       {:ok, pending} = UnifiApi.Network.Devices.list_pending(client)
   """
+  @spec list_pending(Req.Request.t(), keyword()) :: {:ok, term()} | {:error, term()}
   def list_pending(client, opts \\ []) do
     Client.get(client, "#{prefix()}/v1/pending-devices", opts)
   end
@@ -127,6 +138,7 @@ defmodule UnifiApi.Network.Devices do
       |> Stream.filter(& &1["state"] == "CONNECTED")
       |> Enum.to_list()
   """
+  @spec stream(Req.Request.t(), String.t(), keyword()) :: Enumerable.t()
   def stream(client, site_id, opts \\ []) do
     Client.stream(client, "#{prefix()}/v1/sites/#{site_id}/devices", opts)
   end
@@ -139,6 +151,7 @@ defmodule UnifiApi.Network.Devices do
       UnifiApi.Network.Devices.stream_pending(client)
       |> Enum.to_list()
   """
+  @spec stream_pending(Req.Request.t(), keyword()) :: Enumerable.t()
   def stream_pending(client, opts \\ []) do
     Client.stream(client, "#{prefix()}/v1/pending-devices", opts)
   end

@@ -18,6 +18,7 @@ defmodule UnifiApi.Network.Wifi do
 
       {:ok, ssids} = UnifiApi.Network.Wifi.list(client, site_id)
   """
+  @spec list(Req.Request.t(), String.t(), keyword()) :: {:ok, term()} | {:error, term()}
   def list(client, site_id, opts \\ []) do
     Client.get(client, "#{prefix()}/v1/sites/#{site_id}/wifi/broadcasts", opts)
   end
@@ -35,6 +36,7 @@ defmodule UnifiApi.Network.Wifi do
       UnifiApi.Network.Wifi.stream(client, site_id)
       |> Enum.to_list()
   """
+  @spec stream(Req.Request.t(), String.t(), keyword()) :: Enumerable.t()
   def stream(client, site_id, opts \\ []) do
     Client.stream(client, "#{prefix()}/v1/sites/#{site_id}/wifi/broadcasts", opts)
   end

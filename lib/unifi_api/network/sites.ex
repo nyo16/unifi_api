@@ -24,6 +24,7 @@ defmodule UnifiApi.Network.Sites do
       {:ok, [site | _]} = UnifiApi.Network.Sites.list(client)
       site_id = site["id"]
   """
+  @spec list(Req.Request.t(), keyword()) :: {:ok, term()} | {:error, term()}
   def list(client, opts \\ []) do
     Client.get(client, "#{prefix()}/v1/sites", opts)
   end
@@ -41,6 +42,7 @@ defmodule UnifiApi.Network.Sites do
       UnifiApi.Network.Sites.stream(client)
       |> Enum.to_list()
   """
+  @spec stream(Req.Request.t(), keyword()) :: Enumerable.t()
   def stream(client, opts \\ []) do
     Client.stream(client, "#{prefix()}/v1/sites", opts)
   end

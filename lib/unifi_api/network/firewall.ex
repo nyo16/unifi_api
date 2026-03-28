@@ -37,6 +37,7 @@ defmodule UnifiApi.Network.Firewall do
 
       {:ok, zones} = UnifiApi.Network.Firewall.list_zones(client, site_id)
   """
+  @spec list_zones(Req.Request.t(), String.t(), keyword()) :: {:ok, term()} | {:error, term()}
   def list_zones(client, site_id, opts \\ []) do
     Client.get(client, "#{prefix()}/v1/sites/#{site_id}/firewall/zones", opts)
   end
@@ -50,6 +51,7 @@ defmodule UnifiApi.Network.Firewall do
       zone["name"]       # => "Internal"
       zone["networkIds"] # => ["net-1", "net-2"]
   """
+  @spec get_zone(Req.Request.t(), String.t(), String.t()) :: {:ok, term()} | {:error, term()}
   def get_zone(client, site_id, zone_id) do
     Client.get(client, "#{prefix()}/v1/sites/#{site_id}/firewall/zones/#{zone_id}")
   end
@@ -64,6 +66,7 @@ defmodule UnifiApi.Network.Firewall do
         networkIds: [network_id]
       })
   """
+  @spec create_zone(Req.Request.t(), String.t(), map()) :: {:ok, term()} | {:error, term()}
   def create_zone(client, site_id, body) do
     Client.post(client, "#{prefix()}/v1/sites/#{site_id}/firewall/zones", body)
   end
@@ -77,6 +80,8 @@ defmodule UnifiApi.Network.Firewall do
         name: "DMZ-Updated"
       })
   """
+  @spec update_zone(Req.Request.t(), String.t(), String.t(), map()) ::
+          {:ok, term()} | {:error, term()}
   def update_zone(client, site_id, zone_id, body) do
     Client.put(client, "#{prefix()}/v1/sites/#{site_id}/firewall/zones/#{zone_id}", body)
   end
@@ -88,6 +93,7 @@ defmodule UnifiApi.Network.Firewall do
 
       {:ok, _} = UnifiApi.Network.Firewall.delete_zone(client, site_id, zone_id)
   """
+  @spec delete_zone(Req.Request.t(), String.t(), String.t()) :: {:ok, term()} | {:error, term()}
   def delete_zone(client, site_id, zone_id) do
     Client.delete(client, "#{prefix()}/v1/sites/#{site_id}/firewall/zones/#{zone_id}")
   end
@@ -105,6 +111,7 @@ defmodule UnifiApi.Network.Firewall do
 
       {:ok, policies} = UnifiApi.Network.Firewall.list_policies(client, site_id)
   """
+  @spec list_policies(Req.Request.t(), String.t(), keyword()) :: {:ok, term()} | {:error, term()}
   def list_policies(client, site_id, opts \\ []) do
     Client.get(client, "#{prefix()}/v1/sites/#{site_id}/firewall/policies", opts)
   end
@@ -118,6 +125,7 @@ defmodule UnifiApi.Network.Firewall do
       policy["action"]  # => "BLOCK"
       policy["enabled"] # => true
   """
+  @spec get_policy(Req.Request.t(), String.t(), String.t()) :: {:ok, term()} | {:error, term()}
   def get_policy(client, site_id, policy_id) do
     Client.get(client, "#{prefix()}/v1/sites/#{site_id}/firewall/policies/#{policy_id}")
   end
@@ -135,6 +143,7 @@ defmodule UnifiApi.Network.Firewall do
         destination: %{zoneId: lan_zone_id}
       })
   """
+  @spec create_policy(Req.Request.t(), String.t(), map()) :: {:ok, term()} | {:error, term()}
   def create_policy(client, site_id, body) do
     Client.post(client, "#{prefix()}/v1/sites/#{site_id}/firewall/policies", body)
   end
@@ -148,6 +157,8 @@ defmodule UnifiApi.Network.Firewall do
         enabled: false
       })
   """
+  @spec update_policy(Req.Request.t(), String.t(), String.t(), map()) ::
+          {:ok, term()} | {:error, term()}
   def update_policy(client, site_id, policy_id, body) do
     Client.put(client, "#{prefix()}/v1/sites/#{site_id}/firewall/policies/#{policy_id}", body)
   end
@@ -159,6 +170,7 @@ defmodule UnifiApi.Network.Firewall do
 
       {:ok, _} = UnifiApi.Network.Firewall.delete_policy(client, site_id, policy_id)
   """
+  @spec delete_policy(Req.Request.t(), String.t(), String.t()) :: {:ok, term()} | {:error, term()}
   def delete_policy(client, site_id, policy_id) do
     Client.delete(client, "#{prefix()}/v1/sites/#{site_id}/firewall/policies/#{policy_id}")
   end
@@ -171,6 +183,7 @@ defmodule UnifiApi.Network.Firewall do
       UnifiApi.Network.Firewall.stream_zones(client, site_id)
       |> Enum.map(& &1["name"])
   """
+  @spec stream_zones(Req.Request.t(), String.t(), keyword()) :: Enumerable.t()
   def stream_zones(client, site_id, opts \\ []) do
     Client.stream(client, "#{prefix()}/v1/sites/#{site_id}/firewall/zones", opts)
   end
@@ -184,6 +197,7 @@ defmodule UnifiApi.Network.Firewall do
       |> Stream.filter(& &1["enabled"])
       |> Enum.to_list()
   """
+  @spec stream_policies(Req.Request.t(), String.t(), keyword()) :: Enumerable.t()
   def stream_policies(client, site_id, opts \\ []) do
     Client.stream(client, "#{prefix()}/v1/sites/#{site_id}/firewall/policies", opts)
   end

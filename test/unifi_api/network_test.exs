@@ -37,7 +37,7 @@ defmodule UnifiApi.NetworkTest do
       assert conn.method == method
       assert conn.request_path == "/proxy/network/integration#{path}"
       {:ok, raw, conn} = Plug.Conn.read_body(conn)
-      body = Jason.decode!(raw)
+      body = JSON.decode!(raw)
       Req.Test.json(conn, %{"ok" => true, "body" => body})
     end)
   end

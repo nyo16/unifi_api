@@ -23,6 +23,7 @@ defmodule UnifiApi.Protect.NVR do
       nvr["name"]             # => "UNVR"
       nvr["doorbellSettings"] # => %{"defaultMessageText" => "Welcome", ...}
   """
+  @spec get(Req.Request.t()) :: {:ok, term()} | {:error, term()}
   def get(client) do
     Client.get(client, "#{prefix()}/v1/nvrs")
   end

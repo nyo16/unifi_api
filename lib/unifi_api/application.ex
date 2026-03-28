@@ -6,6 +6,7 @@ defmodule UnifiApi.Application do
   use Application
 
   @impl true
+  @spec start(term(), term()) :: {:ok, pid()} | {:error, term()}
   def start(_type, _args) do
     children = [
       # Starts a worker by calling: UnifiApi.Worker.start_link(arg)

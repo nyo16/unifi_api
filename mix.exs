@@ -1,11 +1,13 @@
 defmodule UnifiApi.MixProject do
   use Mix.Project
 
+  @version "0.2.0"
+
   def project do
     [
       app: :unifi_api,
-      version: "0.2.0",
-      elixir: "~> 1.19",
+      version: @version,
+      elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,
       deps: deps(),
       name: "UnifiApi",
@@ -13,7 +15,11 @@ defmodule UnifiApi.MixProject do
       source_url: "https://github.com/nyo16/unifi_api",
       homepage_url: "https://github.com/nyo16/unifi_api",
       package: package(),
-      docs: docs()
+      docs: docs(),
+      dialyzer: [
+        plt_file: {:no_warn, "priv/plts/dialyzer.plt"},
+        plt_add_apps: [:mix, :ex_unit]
+      ]
     ]
   end
 
@@ -72,7 +78,9 @@ defmodule UnifiApi.MixProject do
     [
       {:req, "~> 0.5"},
       {:plug, "~> 1.0", only: :test},
-      {:ex_doc, "~> 0.35", only: :dev, runtime: false}
+      {:ex_doc, "~> 0.35", only: :dev, runtime: false},
+      {:dialyxir, "~> 1.4", only: [:dev, :test], runtime: false},
+      {:credo, "~> 1.7", only: [:dev, :test], runtime: false}
     ]
   end
 end
