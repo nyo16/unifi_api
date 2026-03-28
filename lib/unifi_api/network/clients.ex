@@ -30,6 +30,7 @@ defmodule UnifiApi.Network.Clients do
       # Paginate through all clients
       {:ok, page} = UnifiApi.Network.Clients.list(client, site_id, limit: 50, offset: 0)
   """
+  @spec list(Req.Request.t(), String.t(), keyword()) :: {:ok, term()} | {:error, term()}
   def list(client, site_id, opts \\ []) do
     Client.get(client, "#{prefix()}/v1/sites/#{site_id}/clients", opts)
   end
@@ -52,6 +53,7 @@ defmodule UnifiApi.Network.Clients do
       UnifiApi.Network.Clients.stream(client, site_id)
       |> Enum.count()
   """
+  @spec stream(Req.Request.t(), String.t(), keyword()) :: Enumerable.t()
   def stream(client, site_id, opts \\ []) do
     Client.stream(client, "#{prefix()}/v1/sites/#{site_id}/clients", opts)
   end

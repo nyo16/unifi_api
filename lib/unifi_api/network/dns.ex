@@ -28,6 +28,7 @@ defmodule UnifiApi.Network.DNS do
 
       {:ok, policies} = UnifiApi.Network.DNS.list(client, site_id)
   """
+  @spec list(Req.Request.t(), String.t(), keyword()) :: {:ok, term()} | {:error, term()}
   def list(client, site_id, opts \\ []) do
     Client.get(client, "#{prefix()}/v1/sites/#{site_id}/dns/policies", opts)
   end
@@ -39,6 +40,7 @@ defmodule UnifiApi.Network.DNS do
 
       {:ok, policy} = UnifiApi.Network.DNS.get(client, site_id, policy_id)
   """
+  @spec get(Req.Request.t(), String.t(), String.t()) :: {:ok, term()} | {:error, term()}
   def get(client, site_id, policy_id) do
     Client.get(client, "#{prefix()}/v1/sites/#{site_id}/dns/policies/#{policy_id}")
   end
@@ -62,6 +64,7 @@ defmodule UnifiApi.Network.DNS do
         value: "app.local"
       })
   """
+  @spec create(Req.Request.t(), String.t(), map()) :: {:ok, term()} | {:error, term()}
   def create(client, site_id, body) do
     Client.post(client, "#{prefix()}/v1/sites/#{site_id}/dns/policies", body)
   end
@@ -75,6 +78,7 @@ defmodule UnifiApi.Network.DNS do
         value: "192.168.1.51"
       })
   """
+  @spec update(Req.Request.t(), String.t(), String.t(), map()) :: {:ok, term()} | {:error, term()}
   def update(client, site_id, policy_id, body) do
     Client.put(client, "#{prefix()}/v1/sites/#{site_id}/dns/policies/#{policy_id}", body)
   end
@@ -86,6 +90,7 @@ defmodule UnifiApi.Network.DNS do
 
       {:ok, _} = UnifiApi.Network.DNS.delete(client, site_id, policy_id)
   """
+  @spec delete(Req.Request.t(), String.t(), String.t()) :: {:ok, term()} | {:error, term()}
   def delete(client, site_id, policy_id) do
     Client.delete(client, "#{prefix()}/v1/sites/#{site_id}/dns/policies/#{policy_id}")
   end
@@ -98,6 +103,7 @@ defmodule UnifiApi.Network.DNS do
       UnifiApi.Network.DNS.stream(client, site_id)
       |> Enum.group_by(& &1["type"])
   """
+  @spec stream(Req.Request.t(), String.t(), keyword()) :: Enumerable.t()
   def stream(client, site_id, opts \\ []) do
     Client.stream(client, "#{prefix()}/v1/sites/#{site_id}/dns/policies", opts)
   end

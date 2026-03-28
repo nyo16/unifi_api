@@ -16,6 +16,7 @@ defmodule UnifiApi.Network.Info do
       info["applicationVersion"]
       # => "10.1.84"
   """
+  @spec get_info(Req.Request.t()) :: {:ok, term()} | {:error, term()}
   def get_info(client) do
     Client.get(client, "#{prefix()}/v1/info")
   end

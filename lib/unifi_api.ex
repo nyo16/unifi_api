@@ -59,5 +59,7 @@ defmodule UnifiApi do
       UnifiApi.Network.Sites.list(client)
       UnifiApi.Protect.Cameras.list(client)
   """
+  @spec new() :: Req.Request.t()
+  @spec new(keyword()) :: Req.Request.t()
   defdelegate new(opts \\ []), to: UnifiApi.Client
 end

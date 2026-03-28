@@ -741,7 +741,7 @@ dashboard = %{
 }
 
 # Write to JSON
-File.write!("dashboard.json", Jason.encode!(dashboard, pretty: true))
+File.write!("dashboard.json", JSON.encode!(dashboard))
 ```
 
 You can run this on an interval to feed a time-series database, or serve it
@@ -752,7 +752,7 @@ from a Phoenix endpoint for a live dashboard:
 Stream.interval(30_000)
 |> Stream.each(fn _ ->
   # ... same scraper logic above ...
-  File.write!("dashboard.json", Jason.encode!(dashboard, pretty: true))
+  File.write!("dashboard.json", JSON.encode!(dashboard))
   IO.puts("[#{DateTime.utc_now()}] Dashboard updated")
 end)
 |> Stream.run()

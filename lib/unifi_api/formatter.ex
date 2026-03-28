@@ -32,6 +32,7 @@ defmodule UnifiApi.Formatter do
         colors: %{"type" => :type}
       )
   """
+  @spec table(list(map()) | map(), list(String.t()), keyword()) :: :ok
   def table(data, columns, opts \\ [])
 
   def table(%{"data" => rows}, columns, opts) when is_list(rows) do
@@ -76,6 +77,7 @@ defmodule UnifiApi.Formatter do
       {:ok, nvr} = UnifiApi.Protect.NVR.get(client)
       UnifiApi.Formatter.detail(nvr, title: "NVR Info")
   """
+  @spec detail(map(), keyword()) :: :ok
   def detail(data, opts \\ [])
   def detail(%{"data" => map}, opts) when is_map(map), do: detail(map, opts)
 
@@ -109,6 +111,7 @@ defmodule UnifiApi.Formatter do
       {:ok, devices} = UnifiApi.Network.Devices.list(client, site_id)
       UnifiApi.Formatter.devices(devices)
   """
+  @spec devices(list(map()) | map()) :: :ok
   def devices(data) do
     table(data, ["name", "macAddress", "model", "state", "ipAddress"],
       title: "Devices",
@@ -124,6 +127,7 @@ defmodule UnifiApi.Formatter do
       {:ok, clients} = UnifiApi.Network.Clients.list(client, site_id)
       UnifiApi.Formatter.clients(clients)
   """
+  @spec clients(list(map()) | map()) :: :ok
   def clients(data) do
     table(data, ["name", "ipAddress", "macAddress", "type"],
       title: "Connected Clients",
@@ -139,6 +143,7 @@ defmodule UnifiApi.Formatter do
       {:ok, cameras} = UnifiApi.Protect.Cameras.list(client)
       UnifiApi.Formatter.cameras(cameras)
   """
+  @spec cameras(list(map()) | map()) :: :ok
   def cameras(data) do
     table(data, ["name", "modelKey", "state", "mac"],
       title: "Cameras",
@@ -154,6 +159,7 @@ defmodule UnifiApi.Formatter do
       {:ok, networks} = UnifiApi.Network.Networks.list(client, site_id)
       UnifiApi.Formatter.networks(networks)
   """
+  @spec networks(list(map()) | map()) :: :ok
   def networks(data) do
     table(data, ["name", "vlanId", "id"], title: "Networks")
   end
@@ -166,6 +172,7 @@ defmodule UnifiApi.Formatter do
       {:ok, sites} = UnifiApi.Network.Sites.list(client)
       UnifiApi.Formatter.sites(sites)
   """
+  @spec sites(list(map()) | map()) :: :ok
   def sites(data) do
     table(data, ["name", "id", "internalReference"], title: "Sites")
   end

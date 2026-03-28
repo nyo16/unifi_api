@@ -26,6 +26,7 @@ defmodule UnifiApi.Network.ACL do
 
       {:ok, rules} = UnifiApi.Network.ACL.list(client, site_id)
   """
+  @spec list(Req.Request.t(), String.t(), keyword()) :: {:ok, term()} | {:error, term()}
   def list(client, site_id, opts \\ []) do
     Client.get(client, "#{prefix()}/v1/sites/#{site_id}/acl-rules", opts)
   end
@@ -39,6 +40,7 @@ defmodule UnifiApi.Network.ACL do
       rule["action"] # => "BLOCK"
       rule["type"]   # => "IPV4"
   """
+  @spec get(Req.Request.t(), String.t(), String.t()) :: {:ok, term()} | {:error, term()}
   def get(client, site_id, rule_id) do
     Client.get(client, "#{prefix()}/v1/sites/#{site_id}/acl-rules/#{rule_id}")
   end
@@ -56,6 +58,7 @@ defmodule UnifiApi.Network.ACL do
         protocolFilter: %{protocol: "TCP", dstPort: 22}
       })
   """
+  @spec create(Req.Request.t(), String.t(), map()) :: {:ok, term()} | {:error, term()}
   def create(client, site_id, body) do
     Client.post(client, "#{prefix()}/v1/sites/#{site_id}/acl-rules", body)
   end
@@ -67,6 +70,7 @@ defmodule UnifiApi.Network.ACL do
 
       {:ok, _} = UnifiApi.Network.ACL.update(client, site_id, rule_id, %{enabled: false})
   """
+  @spec update(Req.Request.t(), String.t(), String.t(), map()) :: {:ok, term()} | {:error, term()}
   def update(client, site_id, rule_id, body) do
     Client.put(client, "#{prefix()}/v1/sites/#{site_id}/acl-rules/#{rule_id}", body)
   end
@@ -78,6 +82,7 @@ defmodule UnifiApi.Network.ACL do
 
       {:ok, _} = UnifiApi.Network.ACL.delete(client, site_id, rule_id)
   """
+  @spec delete(Req.Request.t(), String.t(), String.t()) :: {:ok, term()} | {:error, term()}
   def delete(client, site_id, rule_id) do
     Client.delete(client, "#{prefix()}/v1/sites/#{site_id}/acl-rules/#{rule_id}")
   end
@@ -90,6 +95,7 @@ defmodule UnifiApi.Network.ACL do
       {:ok, ordering} = UnifiApi.Network.ACL.get_ordering(client, site_id)
       # => %{"ids" => ["rule-1", "rule-2", "rule-3"]}
   """
+  @spec get_ordering(Req.Request.t(), String.t()) :: {:ok, term()} | {:error, term()}
   def get_ordering(client, site_id) do
     Client.get(client, "#{prefix()}/v1/sites/#{site_id}/acl-rules/ordering")
   end
@@ -103,6 +109,7 @@ defmodule UnifiApi.Network.ACL do
         ids: ["rule-3", "rule-1", "rule-2"]
       })
   """
+  @spec update_ordering(Req.Request.t(), String.t(), map()) :: {:ok, term()} | {:error, term()}
   def update_ordering(client, site_id, body) do
     Client.put(client, "#{prefix()}/v1/sites/#{site_id}/acl-rules/ordering", body)
   end
@@ -116,6 +123,7 @@ defmodule UnifiApi.Network.ACL do
       |> Stream.filter(& &1["enabled"])
       |> Enum.to_list()
   """
+  @spec stream(Req.Request.t(), String.t(), keyword()) :: Enumerable.t()
   def stream(client, site_id, opts \\ []) do
     Client.stream(client, "#{prefix()}/v1/sites/#{site_id}/acl-rules", opts)
   end

@@ -22,7 +22,7 @@ defmodule UnifiApi.ProtectTest do
       assert conn.method == method
       assert conn.request_path == "/proxy/protect/integration#{path}"
       {:ok, raw, conn} = Plug.Conn.read_body(conn)
-      body = Jason.decode!(raw)
+      body = JSON.decode!(raw)
       Req.Test.json(conn, %{"ok" => true, "body" => body})
     end)
   end
@@ -131,6 +131,11 @@ defmodule UnifiApi.ProtectTest do
       client = assert_request("GET", "/v1/liveviews")
       assert {:ok, _} = UnifiApi.Protect.Liveviews.list(client)
     end
+
+    test "get/2" do
+      client = assert_request("GET", "/v1/liveviews/lv-1")
+      assert {:ok, _} = UnifiApi.Protect.Liveviews.get(client, "lv-1")
+    end
   end
 
   # --- Sensors ---
@@ -139,6 +144,18 @@ defmodule UnifiApi.ProtectTest do
     test "list/1" do
       client = assert_request("GET", "/v1/sensors")
       assert {:ok, _} = UnifiApi.Protect.Sensors.list(client)
+    end
+
+    test "get/2" do
+      client = assert_request("GET", "/v1/sensors/sensor-1")
+      assert {:ok, _} = UnifiApi.Protect.Sensors.get(client, "sensor-1")
+    end
+
+    test "update/3" do
+      client = assert_request_with_body("PATCH", "/v1/sensors/sensor-1")
+
+      assert {:ok, %{"body" => %{"name" => "Door Sensor"}}} =
+               UnifiApi.Protect.Sensors.update(client, "sensor-1", %{name: "Door Sensor"})
     end
   end
 
@@ -149,6 +166,18 @@ defmodule UnifiApi.ProtectTest do
       client = assert_request("GET", "/v1/lights")
       assert {:ok, _} = UnifiApi.Protect.Lights.list(client)
     end
+
+    test "get/2" do
+      client = assert_request("GET", "/v1/lights/light-1")
+      assert {:ok, _} = UnifiApi.Protect.Lights.get(client, "light-1")
+    end
+
+    test "update/3" do
+      client = assert_request_with_body("PATCH", "/v1/lights/light-1")
+
+      assert {:ok, %{"body" => %{"name" => "Porch Light"}}} =
+               UnifiApi.Protect.Lights.update(client, "light-1", %{name: "Porch Light"})
+    end
   end
 
   # --- Chimes ---
@@ -157,6 +186,64 @@ defmodule UnifiApi.ProtectTest do
     test "list/1" do
       client = assert_request("GET", "/v1/chimes")
       assert {:ok, _} = UnifiApi.Protect.Chimes.list(client)
+    end
+
+    test "get/2" do
+      client = assert_request("GET", "/v1/chimes/chime-1")
+      assert {:ok, _} = UnifiApi.Protect.Chimes.get(client, "chime-1")
+    end
+
+    test "update/3" do
+      client = assert_request_with_body("PATCH", "/v1/chimes/chime-1")
+
+      assert {:ok, %{"body" => %{"volume" => 80}}} =
+               UnifiApi.Protect.Chimes.update(client, "chime-1", %{volume: 80})
+    end
+  end
+
+  # --- Protect Streams ---
+
+  describe "Protect Streams" do
+    defp stream_client(path) do
+      page_count = :counters.new(1, [:atomics])
+
+      test_client(fn conn ->
+        assert conn.request_path == "/proxy/protect/integration#{path}"
+        :counters.add(page_count, 1, 1)
+        params = Plug.Conn.fetch_query_params(conn).query_params
+        offset = String.to_integer(params["offset"] || "0")
+
+        items =
+          if offset == 0,
+            do: [%{"id" => "a"}, %{"id" => "b"}],
+            else: [%{"id" => "c"}]
+
+        Req.Test.json(conn, items)
+      end)
+    end
+
+    test "Sensors.stream/1" do
+      client = stream_client("/v1/sensors")
+      result = UnifiApi.Protect.Sensors.stream(client, limit: 2) |> Enum.to_list()
+      assert length(result) == 3
+    end
+
+    test "Lights.stream/1" do
+      client = stream_client("/v1/lights")
+      result = UnifiApi.Protect.Lights.stream(client, limit: 2) |> Enum.to_list()
+      assert length(result) == 3
+    end
+
+    test "Chimes.stream/1" do
+      client = stream_client("/v1/chimes")
+      result = UnifiApi.Protect.Chimes.stream(client, limit: 2) |> Enum.to_list()
+      assert length(result) == 3
+    end
+
+    test "Liveviews.stream/1" do
+      client = stream_client("/v1/liveviews")
+      result = UnifiApi.Protect.Liveviews.stream(client, limit: 2) |> Enum.to_list()
+      assert length(result) == 3
     end
   end
 end

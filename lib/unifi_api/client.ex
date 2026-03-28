@@ -12,11 +12,15 @@ defmodule UnifiApi.Client do
       UnifiApi.Network.Sites.list(client)
   """
 
+  @type client :: Req.Request.t()
+  @type response :: {:ok, term()} | {:error, term()}
+
   @doc """
   Creates a new API client.
 
   See `UnifiApi.new/1` for options and examples.
   """
+  @spec new(keyword()) :: client()
   def new(opts \\ []) do
     base_url = opts[:base_url] || Application.get_env(:unifi_api, :base_url)
     api_key = opts[:api_key] || Application.get_env(:unifi_api, :api_key)
@@ -43,6 +47,7 @@ defmodule UnifiApi.Client do
   Defaults to `"/proxy/network/integration"` (UDM). For non-UDM setups
   (Cloud Key), configure `network_path: "/integration"` in application config.
   """
+  @spec network_prefix() :: String.t()
   def network_prefix do
     Application.get_env(:unifi_api, :network_path, "/proxy/network/integration")
   end
@@ -53,6 +58,7 @@ defmodule UnifiApi.Client do
   Defaults to `"/proxy/protect/integration"` (UDM). For non-UDM setups
   (Cloud Key), configure `protect_path: "/integration"` in application config.
   """
+  @spec protect_prefix() :: String.t()
   def protect_prefix do
     Application.get_env(:unifi_api, :protect_path, "/proxy/protect/integration")
   end
@@ -72,6 +78,7 @@ defmodule UnifiApi.Client do
       Client.get(client, "/v1/sites/abc/clients", limit: 50, offset: 100)
       Client.get(client, "/v1/sites/abc/clients", filter: "type.eq(WIRED)")
   """
+  @spec get(client(), String.t(), keyword()) :: response()
   def get(client, path, opts \\ []) do
     params = build_params(opts)
 
@@ -87,6 +94,7 @@ defmodule UnifiApi.Client do
 
       Client.post(client, "/v1/sites/abc/networks", %{name: "Guest"})
   """
+  @spec post(client(), String.t(), term(), keyword()) :: response()
   def post(client, path, body, opts \\ []) do
     params = build_params(opts)
 
@@ -102,6 +110,7 @@ defmodule UnifiApi.Client do
 
       Client.put(client, "/v1/sites/abc/networks/net-1", %{name: "Updated"})
   """
+  @spec put(client(), String.t(), term(), keyword()) :: response()
   def put(client, path, body, opts \\ []) do
     params = build_params(opts)
 
@@ -117,6 +126,7 @@ defmodule UnifiApi.Client do
 
       Client.patch(client, "/v1/cameras/cam-1", %{name: "Front Door"})
   """
+  @spec patch(client(), String.t(), term(), keyword()) :: response()
   def patch(client, path, body, opts \\ []) do
     params = build_params(opts)
 
@@ -132,6 +142,7 @@ defmodule UnifiApi.Client do
 
       Client.delete(client, "/v1/sites/abc/networks/net-1")
   """
+  @spec delete(client(), String.t(), keyword()) :: response()
   def delete(client, path, opts \\ []) do
     params = build_params(opts)
 
@@ -154,6 +165,7 @@ defmodule UnifiApi.Client do
       {:ok, jpeg_binary} = Client.get_raw(client, "/v1/cameras/cam-1/snapshot")
       {:ok, jpeg_binary} = Client.get_raw(client, "/v1/cameras/cam-1/snapshot", high_quality: true)
   """
+  @spec get_raw(client(), String.t(), keyword()) :: {:ok, binary()} | {:error, term()}
   def get_raw(client, path, opts \\ []) do
     params = build_params(opts)
 
@@ -197,6 +209,7 @@ defmodule UnifiApi.Client do
       Client.stream(client, "/v1/sites/abc/clients", filter: "type.eq(WIRELESS)")
       |> Enum.count()
   """
+  @spec stream(client(), String.t(), keyword()) :: Enumerable.t()
   def stream(client, path, opts \\ []) do
     page_size = opts[:limit] || 200
     base_opts = Keyword.take(opts, [:filter])
@@ -217,7 +230,12 @@ defmodule UnifiApi.Client do
                 else: {items, offset + page_size}
 
             {:error, reason} ->
-              raise "UnifiApi.Client.stream failed: #{inspect(reason)}"
+              raise UnifiApi.StreamError, reason: reason, path: path
+
+            {:ok, non_list} ->
+              raise UnifiApi.StreamError,
+                reason: {:unexpected_response, non_list},
+                path: path
           end
       end,
       fn _state -> :ok end
