@@ -49,6 +49,82 @@ defmodule UnifiApi.ClientTest do
       # When verify_ssl is true, connect_options should be empty (no verify_none)
       assert client.options.connect_options == []
     end
+
+    test "defaults to verify_none transport opts" do
+      client = Client.new(base_url: "https://10.0.0.1", api_key: "abc")
+      assert client.options.connect_options == [transport_opts: [verify: :verify_none]]
+    end
+
+    test "cert_fingerprints installs verify_peer with custom verify_fun" do
+      fp = String.duplicate("ab", 32)
+      client = Client.new(base_url: "https://10.0.0.1", api_key: "k", cert_fingerprints: [fp])
+
+      [transport_opts: tls] = client.options.connect_options
+      assert tls[:verify] == :verify_peer
+      assert is_list(tls[:cacerts])
+      assert {fun, nil} = tls[:verify_fun]
+      assert is_function(fun, 3)
+    end
+
+    test "cert_fingerprints overrides verify_ssl" do
+      fp = String.duplicate("cd", 32)
+
+      client =
+        Client.new(
+          base_url: "https://10.0.0.1",
+          api_key: "k",
+          verify_ssl: false,
+          cert_fingerprints: [fp]
+        )
+
+      [transport_opts: tls] = client.options.connect_options
+      assert tls[:verify] == :verify_peer
+    end
+
+    test "cert_fingerprints raises on invalid input" do
+      assert_raise ArgumentError, ~r/invalid SHA-256 cert fingerprint/, fn ->
+        Client.new(base_url: "https://10.0.0.1", api_key: "k", cert_fingerprints: ["nope"])
+      end
+    end
+  end
+
+  describe "decode_fingerprint!/1" do
+    test "decodes plain hex" do
+      hex = String.duplicate("ab", 32)
+      bin = String.duplicate(<<0xAB>>, 32)
+      assert Client.decode_fingerprint!(hex) == bin
+    end
+
+    test "decodes uppercase hex" do
+      hex = String.duplicate("AB", 32)
+      bin = String.duplicate(<<0xAB>>, 32)
+      assert Client.decode_fingerprint!(hex) == bin
+    end
+
+    test "strips sha256: prefix" do
+      hex = String.duplicate("ab", 32)
+      assert Client.decode_fingerprint!("sha256:" <> hex) == String.duplicate(<<0xAB>>, 32)
+    end
+
+    test "strips colons" do
+      with_colons = "AB:" |> String.duplicate(31) |> Kernel.<>("AB")
+      assert Client.decode_fingerprint!(with_colons) == String.duplicate(<<0xAB>>, 32)
+    end
+
+    test "accepts sha256: prefix with colons (ssh-keygen style)" do
+      with_colons = "AB:" |> String.duplicate(31) |> Kernel.<>("AB")
+
+      assert Client.decode_fingerprint!("sha256:" <> with_colons) ==
+               String.duplicate(<<0xAB>>, 32)
+    end
+
+    test "rejects too-short input" do
+      assert_raise ArgumentError, fn -> Client.decode_fingerprint!("abcd") end
+    end
+
+    test "rejects non-hex input" do
+      assert_raise ArgumentError, fn -> Client.decode_fingerprint!(String.duplicate("zz", 32)) end
+    end
   end
 
   describe "get/3" do

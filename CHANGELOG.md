@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `cert_fingerprints` option on `UnifiApi.new/1` for SHA-256 certificate
+  pinning. Set this to a list of fingerprints (`"sha256:AB:CD:..."`,
+  `"AB:CD:..."`, or plain 64-char hex) to verify the controller's
+  self-signed certificate without disabling TLS validation entirely.
+  Overrides `:verify_ssl` when present. Also configurable via
+  `config :unifi_api, :cert_fingerprints, [...]`.
+- README: expanded "Self-Signed Certificates" section covering all three
+  TLS modes (`verify_ssl: false`, fingerprint pinning, real CA), with an
+  `openssl` recipe for extracting the fingerprint.
+
 ## [0.3.0] - 2026-05-02
 
 > **Upgrading from 0.2.x?** See [UPGRADING.md](UPGRADING.md) for a step-by-step

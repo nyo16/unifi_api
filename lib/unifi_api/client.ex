@@ -25,20 +25,82 @@ defmodule UnifiApi.Client do
     base_url = opts[:base_url] || Application.get_env(:unifi_api, :base_url)
     api_key = opts[:api_key] || Application.get_env(:unifi_api, :api_key)
 
-    verify_ssl =
-      Keyword.get(opts, :verify_ssl, Application.get_env(:unifi_api, :verify_ssl, false))
-
-    connect_opts =
-      if verify_ssl,
-        do: [],
-        else: [transport_opts: [verify: :verify_none]]
-
     Req.new(
       base_url: base_url,
       headers: [{"x-api-key", api_key}],
-      connect_options: connect_opts,
+      connect_options: tls_connect_opts(opts),
       redirect: false
     )
+  end
+
+  defp tls_connect_opts(opts) do
+    fingerprints =
+      opts[:cert_fingerprints] ||
+        Application.get_env(:unifi_api, :cert_fingerprints, [])
+
+    verify_ssl =
+      Keyword.get(opts, :verify_ssl, Application.get_env(:unifi_api, :verify_ssl, false))
+
+    cond do
+      fingerprints != [] ->
+        [transport_opts: fingerprint_pinning_opts(fingerprints)]
+
+      verify_ssl ->
+        []
+
+      true ->
+        [transport_opts: [verify: :verify_none]]
+    end
+  end
+
+  defp fingerprint_pinning_opts(fingerprints) do
+    decoded = Enum.map(fingerprints, &decode_fingerprint!/1)
+
+    [
+      verify: :verify_peer,
+      cacerts: :public_key.cacerts_get(),
+      verify_fun: {build_fingerprint_verify_fun(decoded), nil}
+    ]
+  end
+
+  defp build_fingerprint_verify_fun(decoded_fps) do
+    fn
+      _cert, {:bad_cert, _reason}, state -> {:valid, state}
+      _cert, {:extension, _ext}, state -> {:unknown, state}
+      cert, :valid, state -> check_fingerprint(cert, decoded_fps, state)
+      cert, :valid_peer, state -> check_fingerprint(cert, decoded_fps, state)
+    end
+  end
+
+  defp check_fingerprint(otp_cert, allowed, state) do
+    der = :public_key.pkix_encode(:OTPCertificate, otp_cert, :otp)
+    fp = :crypto.hash(:sha256, der)
+
+    if fp in allowed,
+      do: {:valid, state},
+      else: {:fail, :fingerprint_mismatch}
+  end
+
+  @doc false
+  @spec decode_fingerprint!(String.t()) :: <<_::256>>
+  def decode_fingerprint!(fingerprint) when is_binary(fingerprint) do
+    normalized =
+      fingerprint
+      |> String.trim()
+      |> String.downcase()
+      |> String.trim_leading("sha256:")
+      |> String.replace(":", "")
+
+    case Base.decode16(normalized, case: :lower) do
+      {:ok, <<bin::binary-size(32)>>} ->
+        bin
+
+      _ ->
+        raise ArgumentError,
+              "invalid SHA-256 cert fingerprint: #{inspect(fingerprint)} " <>
+                "(expected 64 hex chars, optionally prefixed with \"sha256:\" " <>
+                "and/or separated by colons)"
+    end
   end
 
   @doc """

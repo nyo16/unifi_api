@@ -45,7 +45,14 @@ defmodule UnifiApi do
 
     * `:base_url` — UniFi controller URL (e.g. `"https://192.168.0.1"`)
     * `:api_key` — API key for authentication
-    * `:verify_ssl` — whether to verify SSL certificates (default: `false`)
+    * `:verify_ssl` — whether to verify SSL certificates against the OS CA
+      store (default: `false`). Ignored when `:cert_fingerprints` is set.
+    * `:cert_fingerprints` — list of SHA-256 fingerprints of acceptable
+      peer certificates. When set, the connection is verified by pinning
+      the leaf certificate to one of these fingerprints; CA validation is
+      skipped. Each entry is a hex string, optionally prefixed with
+      `"sha256:"` and/or separated by colons. Example:
+      `["sha256:AB:CD:..."]` or `["abcd...32-byte-hex..."]`.
 
   ## Examples
 
@@ -54,6 +61,13 @@ defmodule UnifiApi do
 
       # With explicit options
       client = UnifiApi.new(base_url: "https://192.168.0.1", api_key: "abc123")
+
+      # Pin the controller's self-signed certificate
+      client = UnifiApi.new(
+        base_url: "https://192.168.0.1",
+        api_key: "abc123",
+        cert_fingerprints: ["sha256:AB:CD:EF:..."]
+      )
 
       # Same client works for both APIs
       UnifiApi.Network.Sites.list(client)

@@ -850,12 +850,58 @@ specific status codes need to update.
 ## Self-Signed Certificates
 
 UDM and Cloud Key controllers use self-signed TLS certificates by default.
-The library disables certificate verification by default (`verify_ssl: false`)
-so that out-of-the-box use does not error.
+You have three options:
 
-If you want stricter validation, set `verify_ssl: true` and trust the
-controller's CA at the OS level — or, for short-lived development setups,
-leave `verify_ssl: false` and accept that the connection is unauthenticated.
+### 1. No verification (default — easy, weakest)
+
+```elixir
+client = UnifiApi.new(verify_ssl: false)  # default
+```
+
+The connection is encrypted but unauthenticated. Anyone on the network path
+between you and the controller could intercept traffic without detection.
+Fine for local trusted networks; **don't ship this to production**.
+
+### 2. Fingerprint pinning (recommended for self-signed setups)
+
+```elixir
+client = UnifiApi.new(
+  base_url: "https://192.168.1.1",
+  api_key: "abc",
+  cert_fingerprints: ["sha256:AB:CD:EF:..."]
+)
+```
+
+The TLS handshake is rejected unless the controller's leaf certificate
+matches one of the configured SHA-256 fingerprints. This pins the
+connection to the specific physical device — much stronger than
+`verify_ssl: false` without requiring a CA.
+
+Get the fingerprint with `openssl`:
+
+```bash
+echo | openssl s_client -connect 192.168.1.1:443 2>/dev/null \
+  | openssl x509 -fingerprint -sha256 -noout
+# => sha256 Fingerprint=AB:CD:EF:...
+```
+
+Accepted formats:
+
+```elixir
+cert_fingerprints: ["sha256:AB:CD:EF:01:..."]    # ssh-keygen / openssl style
+cert_fingerprints: ["AB:CD:EF:01:..."]            # without prefix
+cert_fingerprints: ["abcdef01..."]                # plain 64-char hex
+cert_fingerprints: ["fp1...", "fp2..."]           # multiple (e.g. cert rotation)
+```
+
+### 3. Real CA verification
+
+```elixir
+client = UnifiApi.new(verify_ssl: true)
+```
+
+Use this if you've installed your own CA on the controller and trusted it
+at the OS level. The strongest option, but rarely how UniFi gear is run.
 
 ## Generating Docs
 
