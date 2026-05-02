@@ -1,5 +1,10 @@
 # UnifiApi
 
+[![CI](https://github.com/nyo16/unifi_api/actions/workflows/ci.yml/badge.svg)](https://github.com/nyo16/unifi_api/actions/workflows/ci.yml)
+[![Hex.pm](https://img.shields.io/hexpm/v/unifi_api.svg)](https://hex.pm/packages/unifi_api)
+[![HexDocs](https://img.shields.io/badge/hex-docs-blue.svg)](https://hexdocs.pm/unifi_api)
+[![License](https://img.shields.io/hexpm/l/unifi_api.svg)](https://github.com/nyo16/unifi_api/blob/master/LICENSE)
+
 Elixir HTTP client for **UniFi Dream Machine** APIs, covering both the **Network API** (v10.1.84) and the **Protect API** (v6.2.88). Built on [Req](https://hexdocs.pm/req).
 
 ## Installation
@@ -9,7 +14,7 @@ Add `unifi_api` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:unifi_api, "~> 0.2.0"}
+    {:unifi_api, "~> 0.3.0"}
   ]
 end
 ```
@@ -800,23 +805,57 @@ UnifiApi.Formatter.detail(nvr, title: "NVR Info")
 
 ## Error Handling
 
-All functions return `{:ok, body}` on success or `{:error, reason}` on failure:
+All functions return `{:ok, body}` on success or `{:error, reason}` on failure.
+
+Auth and rate-limit errors are surfaced as exception structs so callers can
+pattern-match without inspecting the status code:
 
 ```elixir
 case UnifiApi.Network.Devices.get(client, site_id, "bad-id") do
   {:ok, device} ->
     IO.inspect(device)
 
+  {:error, %UnifiApi.AuthError{reason: :unauthorized}} ->
+    IO.puts("Invalid API key")
+
+  {:error, %UnifiApi.AuthError{reason: :forbidden}} ->
+    IO.puts("API key lacks permission")
+
+  {:error, %UnifiApi.RateLimitError{retry_after: seconds}} ->
+    Process.sleep(seconds * 1000)
+    retry()
+
   {:error, {404, body}} ->
     IO.puts("Not found: #{inspect(body)}")
 
-  {:error, {401, _}} ->
-    IO.puts("Invalid API key")
+  {:error, {status, body}} ->
+    IO.puts("HTTP #{status}: #{inspect(body)}")
 
   {:error, reason} ->
-    IO.puts("Connection error: #{inspect(reason)}")
+    IO.puts("Transport error: #{inspect(reason)}")
 end
 ```
+
+Other non-2xx responses are returned as `{:error, {status, body}}` tuples.
+
+### Upgrading from a previous version
+
+See [UPGRADING.md](UPGRADING.md) for breaking-change details and concrete
+before/after examples. The headline change in 0.3.0: 401, 403, and 429
+responses now return `%UnifiApi.AuthError{}` and `%UnifiApi.RateLimitError{}`
+structs instead of `{:error, {status, body}}` tuples. Catch-all
+`{:error, _}` matches still work; only callers that pattern-matched the
+specific status codes need to update.
+
+## Self-Signed Certificates
+
+UDM and Cloud Key controllers use self-signed TLS certificates by default.
+The library disables certificate verification by default (`verify_ssl: false`)
+so that out-of-the-box use does not error.
+
+If you want stricter validation, set `verify_ssl: true` and trust the
+controller's CA at the OS level — or, for short-lived development setups,
+leave `verify_ssl: false` and accept that the connection is unauthenticated.
 
 ## Generating Docs
 

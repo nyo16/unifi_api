@@ -1,7 +1,7 @@
 defmodule UnifiApi.MixProject do
   use Mix.Project
 
-  @version "0.2.0"
+  @version "0.3.0"
 
   def project do
     [
@@ -34,15 +34,20 @@ defmodule UnifiApi.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp package do
     [
+      maintainers: ["Niko Maroulis"],
       licenses: ["Apache-2.0"],
-      links: %{"GitHub" => "https://github.com/nyo16/unifi_api"}
+      links: %{
+        "GitHub" => "https://github.com/nyo16/unifi_api",
+        "Changelog" => "https://github.com/nyo16/unifi_api/blob/master/CHANGELOG.md",
+        "Upgrading" => "https://github.com/nyo16/unifi_api/blob/master/UPGRADING.md"
+      }
     ]
   end
 
   defp docs do
     [
       main: "readme",
-      extras: ["README.md", "LICENSE"],
+      extras: ["README.md", "CHANGELOG.md", "UPGRADING.md", "LICENSE"],
       groups_for_modules: [
         "Network API": [
           UnifiApi.Network.Info,
@@ -60,6 +65,11 @@ defmodule UnifiApi.MixProject do
         ],
         Utilities: [
           UnifiApi.Formatter
+        ],
+        Errors: [
+          UnifiApi.AuthError,
+          UnifiApi.RateLimitError,
+          UnifiApi.StreamError
         ],
         "Protect API": [
           UnifiApi.Protect.Cameras,

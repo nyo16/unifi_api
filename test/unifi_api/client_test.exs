@@ -95,7 +95,7 @@ defmodule UnifiApi.ClientTest do
                Client.get(client, "/v1/test", offset: 10, limit: 50, filter: "name.eq(foo)")
     end
 
-    test "returns {:error, {401, body}} on unauthorized" do
+    test "returns {:error, %AuthError{}} on 401" do
       client =
         test_client(fn conn ->
           conn
@@ -103,7 +103,12 @@ defmodule UnifiApi.ClientTest do
           |> Plug.Conn.send_resp(401, JSON.encode!(%{"error" => "unauthorized"}))
         end)
 
-      assert {:error, {401, %{"error" => "unauthorized"}}} = Client.get(client, "/v1/test")
+      assert {:error,
+              %UnifiApi.AuthError{
+                status: 401,
+                reason: :unauthorized,
+                body: %{"error" => "unauthorized"}
+              }} = Client.get(client, "/v1/test")
     end
   end
 
@@ -190,7 +195,7 @@ defmodule UnifiApi.ClientTest do
       assert {:ok, <<0xFF, 0xD8, 0xFF>>} = Client.get_raw(client, "/v1/snapshot")
     end
 
-    test "returns {:error, {status, body}} on failure" do
+    test "returns {:error, %AuthError{reason: :forbidden}} on 403" do
       client =
         test_client(fn conn ->
           conn
@@ -198,7 +203,8 @@ defmodule UnifiApi.ClientTest do
           |> Plug.Conn.send_resp(403, JSON.encode!(%{"error" => "forbidden"}))
         end)
 
-      assert {:error, {403, _}} = Client.get_raw(client, "/v1/snapshot")
+      assert {:error, %UnifiApi.AuthError{status: 403, reason: :forbidden}} =
+               Client.get_raw(client, "/v1/snapshot")
     end
 
     test "passes highQuality param" do

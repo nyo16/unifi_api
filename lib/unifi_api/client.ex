@@ -173,8 +173,8 @@ defmodule UnifiApi.Client do
       {:ok, %Req.Response{status: status, body: body}} when status in 200..299 ->
         {:ok, body}
 
-      {:ok, %Req.Response{status: status, body: body}} ->
-        {:error, {status, body}}
+      {:ok, %Req.Response{} = resp} ->
+        {:error, error_from_response(resp)}
 
       {:error, reason} ->
         {:error, reason}
@@ -258,11 +258,52 @@ defmodule UnifiApi.Client do
     {:ok, body}
   end
 
-  defp handle_response({:ok, %Req.Response{status: status, body: body}}) do
-    {:error, {status, body}}
+  defp handle_response({:ok, %Req.Response{} = resp}) do
+    {:error, error_from_response(resp)}
   end
 
   defp handle_response({:error, reason}) do
     {:error, reason}
   end
+
+  defp error_from_response(%Req.Response{status: 429, body: body} = resp) do
+    %UnifiApi.RateLimitError{
+      retry_after: parse_retry_after(Req.Response.get_header(resp, "retry-after")),
+      status: 429,
+      body: body
+    }
+  end
+
+  defp error_from_response(%Req.Response{status: 401, body: body}) do
+    %UnifiApi.AuthError{status: 401, body: body, reason: :unauthorized}
+  end
+
+  defp error_from_response(%Req.Response{status: 403, body: body}) do
+    %UnifiApi.AuthError{status: 403, body: body, reason: :forbidden}
+  end
+
+  defp error_from_response(%Req.Response{status: status, body: body}) do
+    {status, body}
+  end
+
+  # Parses Retry-After header (RFC 7231 §7.1.3): seconds or HTTP-date.
+  # Falls back to 60s. Clamped to 1..300.
+  defp parse_retry_after([]), do: 60
+
+  defp parse_retry_after([value | _]) when is_binary(value) do
+    case Integer.parse(value) do
+      {seconds, ""} ->
+        clamp_retry_after(seconds)
+
+      _ ->
+        case DateTime.from_iso8601(value) do
+          {:ok, dt, _} -> clamp_retry_after(DateTime.diff(dt, DateTime.utc_now()))
+          _ -> 60
+        end
+    end
+  end
+
+  defp clamp_retry_after(seconds) when seconds <= 1, do: 1
+  defp clamp_retry_after(seconds) when seconds >= 300, do: 300
+  defp clamp_retry_after(seconds), do: seconds
 end
