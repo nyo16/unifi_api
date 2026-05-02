@@ -38,15 +38,39 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   for arbitrary query params (used by v1 modules to send `_start`,
   `_limit`, `within`, etc. without polluting the integration-API param
   builder).
-- New v1 endpoint modules (require cookie + CSRF auth):
-  - `UnifiApi.Network.Events` — `/api/s/{site}/stat/event` with
-    `within_hours`, `limit`, `start` options.
+- New v1 / v2 endpoint modules (require cookie + CSRF auth). Full Phase 3
+  surface, mirroring `unpoller/unpoller`:
+  - `UnifiApi.Network.Events` — `/api/s/{site}/stat/event`.
   - `UnifiApi.Network.Alarms` — `/api/s/{site}/list/alarm` plus
-    `archive/3` for marking alarms archived.
+    `archive/3`.
+  - `UnifiApi.Network.Anomalies` — `/api/s/{site}/stat/anomalies`.
+  - `UnifiApi.Network.IDS` — `/api/s/{site}/stat/ips/event`.
+  - `UnifiApi.Network.RogueAP` — `/api/s/{site}/stat/rogueap` and
+    `/rest/rogueknown`.
   - `UnifiApi.Network.ClientsLive` — `/api/s/{site}/stat/sta` (rich
-    wireless stats: RSSI, signal, noise, satisfaction, MCS, etc.) plus
-    `list_all/3` for `/stat/alluser` (online + offline history).
-  - `UnifiApi.Network.Topology` — `/v2/api/site/{site}/topology` graph.
+    wireless stats) plus `list_all/3` for `/stat/alluser`.
+  - `UnifiApi.Network.ClientsHistory` —
+    `/v2/api/site/{site}/clients/history`.
+  - `UnifiApi.Network.DPI` — `/api/s/{site}/stat/sitedpi` and
+    `/stat/stadpi`.
+  - `UnifiApi.Network.Traffic` — `/v2/api/site/{site}/traffic` and
+    `/country-traffic`.
+  - `UnifiApi.Network.SystemLog` —
+    `/v2/api/site/{site}/system-log/all`.
+  - `UnifiApi.Network.ActiveLeases` —
+    `/v2/api/site/{site}/active-leases`.
+  - `UnifiApi.Network.WAN` — `/wan/enriched-configuration`,
+    `/wan/{id}/isp-status`, `/wan/load-balancing`, `/wan-slas`.
+  - `UnifiApi.Network.PortAnomalies` —
+    `/v2/api/site/{site}/ports/port-anomalies`.
+  - `UnifiApi.Network.UPS` — `/api/s/{site}/stat/ups-devices`.
+  - `UnifiApi.Network.PortForward` — full CRUD for
+    `/api/s/{site}/rest/portforward`.
+  - `UnifiApi.Network.Dashboard` —
+    `/v2/api/site/{site}/aggregated-dashboard?historySeconds=N`.
+  - `UnifiApi.Network.Topology` — `/v2/api/site/{site}/topology`.
+  - `UnifiApi.Protect.Events` — `/proxy/protect/api/events`,
+    `/api/events/{id}/thumbnail` (binary JPEG), `/api/events/system-logs`.
 - README: expanded "Self-Signed Certificates" section covering all three
   TLS modes (`verify_ssl: false`, fingerprint pinning, real CA), with an
   `openssl` recipe for extracting the fingerprint.

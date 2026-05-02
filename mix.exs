@@ -64,10 +64,23 @@ defmodule UnifiApi.MixProject do
           UnifiApi.Network.Resources
         ],
         "Network API (Operational, v1)": [
-          UnifiApi.Network.Events,
+          UnifiApi.Network.ActiveLeases,
           UnifiApi.Network.Alarms,
+          UnifiApi.Network.Anomalies,
+          UnifiApi.Network.ClientsHistory,
           UnifiApi.Network.ClientsLive,
-          UnifiApi.Network.Topology
+          UnifiApi.Network.Dashboard,
+          UnifiApi.Network.DPI,
+          UnifiApi.Network.Events,
+          UnifiApi.Network.IDS,
+          UnifiApi.Network.PortAnomalies,
+          UnifiApi.Network.PortForward,
+          UnifiApi.Network.RogueAP,
+          UnifiApi.Network.SystemLog,
+          UnifiApi.Network.Topology,
+          UnifiApi.Network.Traffic,
+          UnifiApi.Network.UPS,
+          UnifiApi.Network.WAN
         ],
         Utilities: [
           UnifiApi.Formatter
@@ -88,6 +101,9 @@ defmodule UnifiApi.MixProject do
           UnifiApi.Protect.Sensors,
           UnifiApi.Protect.Lights,
           UnifiApi.Protect.Chimes
+        ],
+        "Protect API (v1)": [
+          UnifiApi.Protect.Events
         ]
       ]
     ]

@@ -376,12 +376,15 @@ File.write!("snapshot.jpg", jpeg)
 # Each has: id, name, state, cameraIds, ringSettings
 ```
 
-## Operational Data (Legacy v1 API)
+## Operational Data (Legacy v1 / v2 API)
 
-The integration API does not yet expose events, alarms, anomalies, IDS
-detections, rich live wireless stats, or the topology graph. These live
-on the legacy `/api/s/{site}/...` and `/v2/api/site/{site}/...` paths
-and require **cookie + CSRF authentication** rather than `x-api-key`.
+The integration API doesn't expose the operational and monitoring data
+ops users actually want — events, alarms, IDS detections, rich live
+wireless stats, topology, traffic, WAN health, and so on. These live on
+the legacy `/api/s/{site}/...` and `/v2/api/site/{site}/...` paths and
+require **cookie + CSRF authentication** rather than `x-api-key`.
+
+### Authenticate
 
 ```elixir
 # Build an unauthenticated client, then log in.
@@ -390,36 +393,73 @@ client = UnifiApi.new(base_url: "https://192.168.1.1", verify_ssl: false)
 {:ok, authed} = UnifiApi.Auth.Cookie.login(client, "admin", "password",
   style: :udm  # or :cloud_key
 )
-
-# Recent events (last 24 hours, up to 1000)
-{:ok, events} = UnifiApi.Network.Events.list(authed, "default",
-  within_hours: 24, limit: 1000)
-
-# Active alarms only
-{:ok, alarms} = UnifiApi.Network.Alarms.list(authed, "default", archived: false)
-
-# Rich wireless client stats (RSSI, signal, noise, satisfaction, MCS, ...)
-{:ok, clients} = UnifiApi.Network.ClientsLive.list(authed, "default")
-
-# Topology graph
-{:ok, nodes} = UnifiApi.Network.Topology.get(authed, "default")
 ```
 
-If you don't know which login style your controller uses, probe it
-first:
+If you're not sure which style your controller uses, probe it first:
 
 ```elixir
 {:ok, info} = UnifiApi.detect(client)
 {:ok, authed} = UnifiApi.Auth.Cookie.login(client, user, pass, style: info.style)
 ```
 
-For Cloud Key controllers, also set `Application.put_env(:unifi_api,
-:v1_path, "")` (default is `/proxy/network` for UDM).
+For Cloud Key controllers, also set
+`Application.put_env(:unifi_api, :v1_path, "")` (default is
+`/proxy/network` for UDM).
 
-> **Note:** v1 endpoint shapes are documented from community sources
-> (notably `unpoller/unpoller`). They have not been exercised end-to-end
-> against live UDM Pro / Cloud Key hardware in v0.3.0. File issues with
-> controller model and firmware version if anything looks off.
+### Available modules
+
+| Module | Endpoint | Purpose |
+|--------|----------|---------|
+| `Network.Events` | `/stat/event` | Client/AP/system events |
+| `Network.Alarms` | `/list/alarm` | Active and archived alarms |
+| `Network.Anomalies` | `/stat/anomalies` | Diagnostic anomalies |
+| `Network.IDS` | `/stat/ips/event` | IDS / IPS detections |
+| `Network.RogueAP` | `/stat/rogueap`, `/rest/rogueknown` | Neighbouring / rogue APs |
+| `Network.ClientsLive` | `/stat/sta`, `/stat/alluser` | Rich wireless stats; offline history |
+| `Network.ClientsHistory` | `/v2/.../clients/history` | Searchable client history |
+| `Network.DPI` | `/stat/sitedpi`, `/stat/stadpi` | DPI by site / per-client |
+| `Network.Traffic` | `/v2/.../traffic`, `/country-traffic` | Time-series by client / country |
+| `Network.SystemLog` | `/v2/.../system-log/all` | Controller system log |
+| `Network.ActiveLeases` | `/v2/.../active-leases` | Live DHCP table |
+| `Network.WAN` | `/v2/.../wan/...`, `/wan-slas` | WAN config, ISP status, SLAs |
+| `Network.PortAnomalies` | `/v2/.../ports/port-anomalies` | Switch port anomalies |
+| `Network.UPS` | `/stat/ups-devices` | UPS battery / load |
+| `Network.PortForward` | `/rest/portforward` | NAT port forward CRUD |
+| `Network.Dashboard` | `/v2/.../aggregated-dashboard` | One-shot dashboard payload |
+| `Network.Topology` | `/v2/.../topology` | Topology graph |
+| `Protect.Events` | `/proxy/protect/api/events` | Motion, ring, smartDetect events + thumbnails |
+
+### Quick example
+
+```elixir
+# Recent events (last 24 hours, up to 1000)
+{:ok, events} = UnifiApi.Network.Events.list(authed, "default",
+  within_hours: 24, limit: 1000)
+
+# Worst-RSSI wireless clients right now
+{:ok, clients} = UnifiApi.Network.ClientsLive.list(authed, "default")
+worst =
+  clients
+  |> Enum.reject(& &1["is_wired"])
+  |> Enum.sort_by(& &1["signal"])
+  |> Enum.take(10)
+
+# All Protect motion events in the last hour, with thumbnails
+hour_ago = System.os_time(:millisecond) - 60 * 60 * 1000
+{:ok, motion} =
+  UnifiApi.Protect.Events.list(authed, start: hour_ago, types: ["motion"])
+
+for ev <- motion do
+  {:ok, jpeg} = UnifiApi.Protect.Events.thumbnail(authed, ev["id"])
+  File.write!("event-#{ev["id"]}.jpg", jpeg)
+end
+```
+
+> **Note:** v1 / v2 endpoint shapes are documented from community
+> sources (primarily `unpoller/unpoller`). They have not been exercised
+> end-to-end against live UDM Pro / Cloud Key hardware in v0.3.0. Please
+> file an issue with controller model and firmware version if anything
+> looks off — most fixes will be one-line tweaks.
 
 ## Streaming & Pagination
 
