@@ -213,7 +213,8 @@ defmodule UnifiApi.Formatter do
   @spec clients_live(list(map()) | map()) :: :ok
   def clients_live(data) do
     table(data, ["hostname", "mac", "ip", "signal", "satisfaction", "essid", "ap_name"],
-      title: "Clients (live)"
+      title: "Clients (live)",
+      colors: %{"signal" => :rssi, "satisfaction" => :satisfaction}
     )
   end
 
@@ -316,6 +317,30 @@ defmodule UnifiApi.Formatter do
       "warning" -> IO.ANSI.yellow()
       "info" -> IO.ANSI.blue()
       _ -> ""
+    end
+  end
+
+  # WiFi RSSI in dBm. Closer to 0 is stronger.
+  #   >= -60 → green (excellent)
+  #   -60..-70 → yellow
+  #   < -70 → red
+  defp get_color(value, :rssi) do
+    case Integer.parse(value) do
+      {n, _} when n >= -60 -> IO.ANSI.green()
+      {n, _} when n >= -70 -> IO.ANSI.yellow()
+      {_, _} -> IO.ANSI.red()
+      :error -> ""
+    end
+  end
+
+  # UniFi "satisfaction" score, 0..100.
+  #   >= 80 → green, 50..79 → yellow, < 50 → red
+  defp get_color(value, :satisfaction) do
+    case Integer.parse(value) do
+      {n, _} when n >= 80 -> IO.ANSI.green()
+      {n, _} when n >= 50 -> IO.ANSI.yellow()
+      {_, _} -> IO.ANSI.red()
+      :error -> ""
     end
   end
 

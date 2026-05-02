@@ -357,6 +357,53 @@ defmodule UnifiApi.Client do
     )
   end
 
+  @doc """
+  Like `stream/3` but for legacy v1 endpoints.
+
+  Pages on `_start` / `_limit` (the v1 convention) rather than
+  `offset` / `limit`, and unwraps the v1 response envelope via
+  `get_v1/3`. Used by `UnifiApi.Network.Events.stream/3`,
+  `Alarms.stream/3`, etc.
+
+  ## Options
+
+    * `:limit` — items per page (default: 500, the typical v1 cap)
+    * `:params` — additional query params merged on every request
+      (e.g. `[within: 24]` to time-window the entire stream)
+  """
+  @spec stream_v1(client(), String.t(), keyword()) :: Enumerable.t()
+  def stream_v1(client, path, opts \\ []) do
+    page_size = opts[:limit] || 500
+    base_params = Keyword.get(opts, :params, [])
+
+    Stream.resource(
+      fn -> 0 end,
+      fn
+        :halt ->
+          {:halt, :done}
+
+        start ->
+          params = base_params ++ [_start: start, _limit: page_size]
+
+          case get_v1(client, path, params: params) do
+            {:ok, items} when is_list(items) ->
+              if length(items) < page_size,
+                do: {items, :halt},
+                else: {items, start + page_size}
+
+            {:error, reason} ->
+              raise UnifiApi.StreamError, reason: reason, path: path
+
+            {:ok, non_list} ->
+              raise UnifiApi.StreamError,
+                reason: {:unexpected_response, non_list},
+                path: path
+          end
+      end,
+      fn _state -> :ok end
+    )
+  end
+
   defp build_params(opts) do
     extra = Keyword.get(opts, :params, [])
 

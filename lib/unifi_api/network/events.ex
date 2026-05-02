@@ -65,6 +65,35 @@ defmodule UnifiApi.Network.Events do
     Client.get_v1(client, "#{prefix()}/api/s/#{site_id}/stat/event", params: params)
   end
 
+  @doc """
+  Returns a lazy stream that auto-paginates events via `_start` / `_limit`.
+
+  ## Options
+
+    * `:within_hours` — passed through to every page request as
+      `within=N`.
+    * `:limit` — page size (default 500).
+
+  ## Examples
+
+      # Stream every event in the last 24 hours
+      UnifiApi.Network.Events.stream(authed, "default", within_hours: 24)
+      |> Enum.to_list()
+
+      # Stop early — only fetches one page
+      UnifiApi.Network.Events.stream(authed, "default")
+      |> Enum.take(50)
+  """
+  @spec stream(Req.Request.t(), String.t(), keyword()) :: Enumerable.t()
+  def stream(client, site_id, opts \\ []) do
+    base_params = maybe_param([], :within, opts[:within_hours])
+
+    Client.stream_v1(client, "#{prefix()}/api/s/#{site_id}/stat/event",
+      limit: opts[:limit] || 500,
+      params: base_params
+    )
+  end
+
   defp maybe_param(params, _key, nil), do: params
   defp maybe_param(params, key, value), do: [{key, value} | params]
 

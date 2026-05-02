@@ -47,6 +47,25 @@ defmodule UnifiApi.Network.IDS do
     Client.get_v1(client, "#{prefix()}/api/s/#{site_id}/stat/ips/event", params: params)
   end
 
+  @doc """
+  Returns a lazy stream that auto-paginates IDS / IPS events via
+  `_start` / `_limit`.
+
+  ## Options
+
+    * `:within_hours` — passed through to every page as `within=N`.
+    * `:limit` — page size (default 500).
+  """
+  @spec stream(Req.Request.t(), String.t(), keyword()) :: Enumerable.t()
+  def stream(client, site_id, opts \\ []) do
+    base_params = maybe_param([], :within, opts[:within_hours])
+
+    Client.stream_v1(client, "#{prefix()}/api/s/#{site_id}/stat/ips/event",
+      limit: opts[:limit] || 500,
+      params: base_params
+    )
+  end
+
   defp maybe_param(params, _key, nil), do: params
   defp maybe_param(params, key, value), do: [{key, value} | params]
 

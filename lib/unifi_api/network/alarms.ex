@@ -72,6 +72,24 @@ defmodule UnifiApi.Network.Alarms do
     )
   end
 
+  @doc """
+  Returns a lazy stream that auto-paginates alarms via `_start` / `_limit`.
+
+  ## Options
+
+    * `:archived` — `true` for archived only, `false` for active only.
+    * `:limit` — page size (default 500).
+  """
+  @spec stream(Req.Request.t(), String.t(), keyword()) :: Enumerable.t()
+  def stream(client, site_id, opts \\ []) do
+    base_params = maybe_param([], :archived, opts[:archived])
+
+    Client.stream_v1(client, "#{prefix()}/api/s/#{site_id}/list/alarm",
+      limit: opts[:limit] || 500,
+      params: base_params
+    )
+  end
+
   defp maybe_param(params, _key, nil), do: params
   defp maybe_param(params, key, value), do: [{key, value} | params]
 

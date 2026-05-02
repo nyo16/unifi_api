@@ -88,6 +88,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `Session.client/1` to get a `Req.Request` whose request steps pull
   the latest auth state at send time. Closes out the deferred
   auto-refresh story in `UnifiApi.Auth.Cookie`.
+- `UnifiApi.Client.stream_v1/3` — paginates legacy v1 endpoints via
+  `_start` / `_limit`, mirroring `Client.stream/3`. Added
+  `stream/3` variants on `UnifiApi.Network.Events`, `Alarms`, and
+  `IDS`.
+- `UnifiApi.Network.DPI.with_names/2` — joins numeric `cat` / `app`
+  IDs against `Resources.list_dpi_categories/1` and
+  `list_dpi_applications/1`, populating `category_name` and
+  `application_name` on every `by_cat` / `by_app` entry.
+- `UnifiApi.Formatter` numeric colour rules `:rssi` (signal-strength
+  buckets) and `:satisfaction` (UniFi 0..100 score). Wired into the
+  `clients_live/1` shortcut so the `signal` and `satisfaction` columns
+  render colour-coded by value.
+- CI: the `test` job now runs across three Elixir / OTP combinations
+  (`1.18.0` on OTP 26.2.5, `1.18.3` on OTP 27.2, `1.18.4` on OTP 27.2)
+  to catch compat regressions across the supported floor.
 - README: expanded "Self-Signed Certificates" section covering all three
   TLS modes (`verify_ssl: false`, fingerprint pinning, real CA), with an
   `openssl` recipe for extracting the fingerprint.
