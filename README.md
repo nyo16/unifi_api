@@ -486,6 +486,34 @@ for ev <- motion do
 end
 ```
 
+### DPI with names
+
+The legacy DPI endpoints return numeric `cat` and `app` IDs only.
+Combine them with the integration-API category / application lists
+via `UnifiApi.Network.DPI.with_names/2`:
+
+```elixir
+# These don't change often — fetch once, reuse:
+{:ok, categories} = UnifiApi.Network.Resources.list_dpi_categories(client)
+{:ok, applications} = UnifiApi.Network.Resources.list_dpi_applications(client)
+
+# Then on every poll:
+{:ok, dpi} = UnifiApi.Network.DPI.by_site(authed, "default")
+
+named =
+  UnifiApi.Network.DPI.with_names(dpi,
+    categories: categories,
+    applications: applications
+  )
+
+# Top 10 apps by tx_bytes
+named
+|> Enum.flat_map(& &1["by_app"])
+|> Enum.sort_by(& &1["tx_bytes"], :desc)
+|> Enum.take(10)
+|> Enum.map(&{&1["application_name"], &1["tx_bytes"]})
+```
+
 > **Note:** v1 / v2 endpoint shapes are documented from community
 > sources (primarily `unpoller/unpoller`). They have not been exercised
 > end-to-end against live UDM Pro / Cloud Key hardware in v0.3.0. Please
@@ -539,6 +567,8 @@ Stream functions raise on API errors, making them safe to compose in pipelines.
 
 ### Available stream functions
 
+Integration API (offset / limit):
+
 | Module | Function |
 |--------|----------|
 | Sites | `stream/2` |
@@ -552,6 +582,27 @@ Stream functions raise on API errors, making them safe to compose in pipelines.
 | DNS | `stream/3` |
 | TrafficMatching | `stream/3` |
 | Resources | `stream_wans/3`, `stream_vpn_tunnels/3`, `stream_vpn_servers/3`, `stream_radius_profiles/3`, `stream_device_tags/3`, `stream_dpi_categories/2`, `stream_dpi_applications/2`, `stream_countries/2` |
+
+Operational v1 API (`_start` / `_limit`, requires cookie auth):
+
+| Module | Function |
+|--------|----------|
+| Events | `stream/3` (with `:within_hours`) |
+| Alarms | `stream/3` (with `:archived`) |
+| IDS | `stream/3` (with `:within_hours`) |
+
+```elixir
+# Stream every event in the last 24 hours, no manual paging
+UnifiApi.Network.Events.stream(authed, "default", within_hours: 24)
+|> Enum.to_list()
+
+# Top 5 most recent IDS detections
+UnifiApi.Network.IDS.stream(authed, "default", within_hours: 1)
+|> Enum.take(5)
+```
+
+For other v1 endpoints, drop down to `UnifiApi.Client.stream_v1/3`
+directly — it takes a path and arbitrary `:params`.
 
 ### Manual pagination
 
@@ -904,6 +955,27 @@ UnifiApi.Formatter.cameras(cameras)
 UnifiApi.Formatter.networks(networks)
 ```
 
+Operational (v1) shortcuts (use the cookie-auth `authed` from
+`UnifiApi.Auth.Cookie.login/4` or `UnifiApi.Auth.Session.client/1`):
+
+```elixir
+{:ok, events} = UnifiApi.Network.Events.list(authed, "default", within_hours: 1)
+UnifiApi.Formatter.events(events)
+# subsystem column is color-coded: magenta=wlan, blue=lan, cyan=wan, red=ips, ...
+
+{:ok, alarms} = UnifiApi.Network.Alarms.list(authed, "default")
+UnifiApi.Formatter.alarms(alarms)
+# severity column is color-coded: red=critical, yellow=warn, blue=info
+
+{:ok, clients} = UnifiApi.Network.ClientsLive.list(authed, "default")
+UnifiApi.Formatter.clients_live(clients)
+# signal column buckets RSSI by strength (green ≥ -60, yellow -60..-70, red < -70)
+# satisfaction column buckets the 0..100 score (green ≥ 80, yellow ≥ 50, red < 50)
+
+{:ok, anomalies} = UnifiApi.Network.Anomalies.list(authed, "default")
+UnifiApi.Formatter.anomalies(anomalies)
+```
+
 ### Custom tables
 
 ```elixir
@@ -918,6 +990,20 @@ UnifiApi.Formatter.table(devices, ["name", "mac", "model", "state", "ip"],
 {:ok, nvr} = UnifiApi.Protect.NVR.get(protect)
 UnifiApi.Formatter.detail(nvr, title: "NVR Info")
 ```
+
+### Built-in colour rules
+
+Pass any of these as values in the `:colors` map on `table/3` to
+colour a column based on its cell value:
+
+| Rule | Behaviour |
+|------|-----------|
+| `:state` | `CONNECTED`/`ONLINE` → green, `CONNECTING`/`UPDATING` → yellow, `DISCONNECTED`/`OFFLINE` → red |
+| `:type` | `WIRED` → blue, `WIRELESS` → magenta, `VPN` → cyan, `TELEPORT` → yellow |
+| `:subsystem` | `wlan` → magenta, `lan` → blue, `wan`/`vpn` → cyan, `ips`/`alarm` → red, `system` → yellow |
+| `:severity` | `critical`/`error` → red, `warn`/`warning` → yellow, `info` → blue |
+| `:rssi` | numeric dBm: ≥ -60 green, ≥ -70 yellow, else red |
+| `:satisfaction` | numeric 0..100: ≥ 80 green, ≥ 50 yellow, else red |
 
 ## Error Handling
 
