@@ -82,6 +82,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - README "Multiple Controllers" section with parallel `Task.async_stream`
   pattern and a per-controller path-config recipe for mixed UDM /
   Cloud Key fleets.
+- `UnifiApi.Auth.Session` — supervised GenServer that holds cookie +
+  CSRF auth state and auto-rotates the CSRF token from response
+  headers. Add it to your supervision tree once and call
+  `Session.client/1` to get a `Req.Request` whose request steps pull
+  the latest auth state at send time. Closes out the deferred
+  auto-refresh story in `UnifiApi.Auth.Cookie`.
 - README: expanded "Self-Signed Certificates" section covering all three
   TLS modes (`verify_ssl: false`, fingerprint pinning, real CA), with an
   `openssl` recipe for extracting the fingerprint.

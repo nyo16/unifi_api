@@ -32,19 +32,21 @@ defmodule UnifiApi.Auth.Cookie do
 
   ## CSRF rotation
 
-  UniFi controllers may rotate the CSRF token mid-session. The token captured
-  at login is baked into the returned `Req.Request.t()` and is **not**
-  automatically refreshed. For long-running pollers that perform writes:
+  UniFi controllers may rotate the CSRF token mid-session. `login/4` returns
+  a static `Req.Request.t()` and does **not** auto-refresh.
 
-    * Read-only requests (GET) work indefinitely — CSRF is only enforced on
-      mutating verbs.
-    * If a write returns 403, call `refresh_csrf/1` (issues a lightweight GET
-      and updates the token from the response header) or simply call
+  For long-running pollers that perform writes, prefer
+  `UnifiApi.Auth.Session` — a supervised GenServer that holds the auth state
+  and auto-rotates CSRF from response headers on every request. This module
+  (`Cookie`) is the right call for one-shot scripts and tests.
+
+  Notes for the stateless flow:
+
+    * Read-only requests (GET) work indefinitely — CSRF is only enforced
+      on mutating verbs.
+    * If a write returns 403, call `refresh_csrf/2` (issues a lightweight
+      GET and updates the token from the response header) or simply call
       `login/4` again.
-
-  This is a deliberate trade-off in v0.3.0 to keep authenticated sessions
-  stateless. A supervised auto-refreshing session may follow in a later
-  release.
 
   > **Note:** This module is implemented to the documented and observed
   > shape of the UniFi login endpoints. It has been unit-tested against

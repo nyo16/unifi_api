@@ -91,7 +91,8 @@ defmodule UnifiApi.MixProject do
           UnifiApi.StreamError
         ],
         Authentication: [
-          UnifiApi.Auth.Cookie
+          UnifiApi.Auth.Cookie,
+          UnifiApi.Auth.Session
         ],
         "Protect API": [
           UnifiApi.Protect.Cameras,

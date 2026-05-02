@@ -384,7 +384,7 @@ wireless stats, topology, traffic, WAN health, and so on. These live on
 the legacy `/api/s/{site}/...` and `/v2/api/site/{site}/...` paths and
 require **cookie + CSRF authentication** rather than `x-api-key`.
 
-### Authenticate
+### Authenticate (one-shot scripts)
 
 ```elixir
 # Build an unauthenticated client, then log in.
@@ -405,6 +405,37 @@ If you're not sure which style your controller uses, probe it first:
 For Cloud Key controllers, also set
 `Application.put_env(:unifi_api, :v1_path, "")` (default is
 `/proxy/network` for UDM).
+
+### Authenticate (long-running app)
+
+For pollers and supervised processes that need cookie auth over hours
+or days, `UnifiApi.Auth.Cookie.login/4`'s static request struct goes
+stale when the controller rotates the CSRF token. Use
+`UnifiApi.Auth.Session` instead — a supervised GenServer that holds
+the cookie + CSRF state and auto-rotates the token from response
+headers:
+
+```elixir
+children = [
+  {UnifiApi.Auth.Session,
+   name: MyApp.UnifiSession,
+   client: UnifiApi.new(base_url: "https://192.168.1.1", verify_ssl: false),
+   username: System.fetch_env!("UNIFI_USERNAME"),
+   password: System.fetch_env!("UNIFI_PASSWORD"),
+   style: :udm}
+]
+
+Supervisor.start_link(children, strategy: :one_for_one)
+
+# Anywhere in your app:
+authed = UnifiApi.Auth.Session.client(MyApp.UnifiSession)
+{:ok, events} = UnifiApi.Network.Events.list(authed, "default")
+```
+
+Every request through `authed` pulls the current cookies + CSRF from
+the GenServer at send time and writes back any rotated token captured
+from the response. `Session.refresh/1` and `Session.relogin/1` are
+escape hatches for the rare case the auto-rotation misses.
 
 ### Available modules
 
