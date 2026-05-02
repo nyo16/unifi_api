@@ -167,6 +167,42 @@ defmodule UnifiApi.Client do
   end
 
   @doc """
+  Performs a GET request against a legacy v1 endpoint and unwraps the
+  `%{"meta" => %{"rc" => "ok"}, "data" => [...]}` envelope.
+
+  Used by `UnifiApi.Network.Events`, `Alarms`, `ClientsLive`, etc. — all
+  the endpoints that require cookie + CSRF auth via `UnifiApi.Auth.Cookie`.
+
+  Returns:
+
+    * `{:ok, data}` when `meta.rc == "ok"` (or no envelope is present).
+    * `{:error, {:unifi_error, msg}}` when the controller returns
+      `meta.rc == "error"` (e.g. `meta.msg = "api.err.LoginRequired"`).
+    * `{:error, reason}` for transport / non-2xx responses, same as `get/3`.
+
+  ## Options
+
+  Same as `get/3`. The `:params` option is the most useful here:
+
+      Client.get_v1(client, "/proxy/network/api/s/default/stat/event",
+        params: [_limit: 100, within: 24])
+  """
+  @spec get_v1(client(), String.t(), keyword()) :: response()
+  def get_v1(client, path, opts \\ []) do
+    with {:ok, body} <- get(client, path, opts) do
+      unwrap_v1(body)
+    end
+  end
+
+  defp unwrap_v1(%{"meta" => %{"rc" => "ok"}, "data" => data}), do: {:ok, data}
+
+  defp unwrap_v1(%{"meta" => %{"rc" => "error"} = meta}),
+    do: {:error, {:unifi_error, meta["msg"] || "unknown"}}
+
+  defp unwrap_v1(%{"data" => data}), do: {:ok, data}
+  defp unwrap_v1(other), do: {:ok, other}
+
+  @doc """
   Performs a POST request with a JSON body.
 
   ## Examples
@@ -322,7 +358,9 @@ defmodule UnifiApi.Client do
   end
 
   defp build_params(opts) do
-    []
+    extra = Keyword.get(opts, :params, [])
+
+    extra
     |> maybe_add(:offset, opts[:offset])
     |> maybe_add(:limit, opts[:limit])
     |> maybe_add(:filter, opts[:filter])

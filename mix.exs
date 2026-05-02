@@ -63,6 +63,12 @@ defmodule UnifiApi.MixProject do
           UnifiApi.Network.TrafficMatching,
           UnifiApi.Network.Resources
         ],
+        "Network API (Operational, v1)": [
+          UnifiApi.Network.Events,
+          UnifiApi.Network.Alarms,
+          UnifiApi.Network.ClientsLive,
+          UnifiApi.Network.Topology
+        ],
         Utilities: [
           UnifiApi.Formatter
         ],

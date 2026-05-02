@@ -29,8 +29,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `auth_path`. Heuristic mirrors `unpoller/unpoller`.
 - `UnifiApi.Client.v1_prefix/0` and matching `:v1_path` config key
   (default `/proxy/network`, override with `""` for Cloud Key or
-  `UNIFI_V1_PATH`) to support the upcoming legacy `/api/s/{site}/...`
-  endpoint modules.
+  `UNIFI_V1_PATH`) to support the legacy `/api/s/{site}/...` endpoints.
+- `UnifiApi.Client.get_v1/3` — generic GET that unwraps the
+  `%{"meta" => %{"rc" => "ok"}, "data" => [...]}` envelope used by every
+  legacy v1 endpoint, surfacing `meta.rc == "error"` as
+  `{:error, {:unifi_error, msg}}`.
+- `:params` passthrough on all `Client.{get,post,put,patch,delete}/3`
+  for arbitrary query params (used by v1 modules to send `_start`,
+  `_limit`, `within`, etc. without polluting the integration-API param
+  builder).
+- New v1 endpoint modules (require cookie + CSRF auth):
+  - `UnifiApi.Network.Events` — `/api/s/{site}/stat/event` with
+    `within_hours`, `limit`, `start` options.
+  - `UnifiApi.Network.Alarms` — `/api/s/{site}/list/alarm` plus
+    `archive/3` for marking alarms archived.
+  - `UnifiApi.Network.ClientsLive` — `/api/s/{site}/stat/sta` (rich
+    wireless stats: RSSI, signal, noise, satisfaction, MCS, etc.) plus
+    `list_all/3` for `/stat/alluser` (online + offline history).
+  - `UnifiApi.Network.Topology` — `/v2/api/site/{site}/topology` graph.
 - README: expanded "Self-Signed Certificates" section covering all three
   TLS modes (`verify_ssl: false`, fingerprint pinning, real CA), with an
   `openssl` recipe for extracting the fingerprint.

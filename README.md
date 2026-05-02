@@ -376,6 +376,51 @@ File.write!("snapshot.jpg", jpeg)
 # Each has: id, name, state, cameraIds, ringSettings
 ```
 
+## Operational Data (Legacy v1 API)
+
+The integration API does not yet expose events, alarms, anomalies, IDS
+detections, rich live wireless stats, or the topology graph. These live
+on the legacy `/api/s/{site}/...` and `/v2/api/site/{site}/...` paths
+and require **cookie + CSRF authentication** rather than `x-api-key`.
+
+```elixir
+# Build an unauthenticated client, then log in.
+client = UnifiApi.new(base_url: "https://192.168.1.1", verify_ssl: false)
+
+{:ok, authed} = UnifiApi.Auth.Cookie.login(client, "admin", "password",
+  style: :udm  # or :cloud_key
+)
+
+# Recent events (last 24 hours, up to 1000)
+{:ok, events} = UnifiApi.Network.Events.list(authed, "default",
+  within_hours: 24, limit: 1000)
+
+# Active alarms only
+{:ok, alarms} = UnifiApi.Network.Alarms.list(authed, "default", archived: false)
+
+# Rich wireless client stats (RSSI, signal, noise, satisfaction, MCS, ...)
+{:ok, clients} = UnifiApi.Network.ClientsLive.list(authed, "default")
+
+# Topology graph
+{:ok, nodes} = UnifiApi.Network.Topology.get(authed, "default")
+```
+
+If you don't know which login style your controller uses, probe it
+first:
+
+```elixir
+{:ok, info} = UnifiApi.detect(client)
+{:ok, authed} = UnifiApi.Auth.Cookie.login(client, user, pass, style: info.style)
+```
+
+For Cloud Key controllers, also set `Application.put_env(:unifi_api,
+:v1_path, "")` (default is `/proxy/network` for UDM).
+
+> **Note:** v1 endpoint shapes are documented from community sources
+> (notably `unpoller/unpoller`). They have not been exercised end-to-end
+> against live UDM Pro / Cloud Key hardware in v0.3.0. File issues with
+> controller model and firmware version if anything looks off.
+
 ## Streaming & Pagination
 
 Every list endpoint has a `stream` variant that returns a lazy `Stream` powered by
