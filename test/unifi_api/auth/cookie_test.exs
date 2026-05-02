@@ -147,4 +147,28 @@ defmodule UnifiApi.Auth.CookieTest do
       assert Cookie.csrf_token(client) == nil
     end
   end
+
+  describe "logout/2" do
+    test "POSTs to /api/auth/logout for :udm style (default)" do
+      client =
+        test_client(fn conn ->
+          assert conn.method == "POST"
+          assert conn.request_path == "/api/auth/logout"
+          Plug.Conn.send_resp(conn, 200, "")
+        end)
+
+      assert :ok = Cookie.logout(client)
+    end
+
+    test "POSTs to /api/logout for :cloud_key style" do
+      client =
+        test_client(fn conn ->
+          assert conn.method == "POST"
+          assert conn.request_path == "/api/logout"
+          Plug.Conn.send_resp(conn, 200, "")
+        end)
+
+      assert :ok = Cookie.logout(client, style: :cloud_key)
+    end
+  end
 end

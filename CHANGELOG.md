@@ -71,6 +71,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `UnifiApi.Network.Topology` — `/v2/api/site/{site}/topology`.
   - `UnifiApi.Protect.Events` — `/proxy/protect/api/events`,
     `/api/events/{id}/thumbnail` (binary JPEG), `/api/events/system-logs`.
+- `UnifiApi.Formatter` shortcuts for the new modules: `events/1`,
+  `alarms/1` (severity-coloured), `clients_live/1`, `anomalies/1`. Plus
+  new `:subsystem` and `:severity` colour rules on `table/3`.
+- New examples scripts under `examples/`:
+  - `operational.exs` — cookie auth + recent events + active alarms
+    + worst-RSSI clients, with `UnifiApi.detect/1` controller probe.
+  - `protect_events.exs` — pulls Protect motion / smartDetect events
+    from the last hour and saves each thumbnail as a JPEG.
+- README "Multiple Controllers" section with parallel `Task.async_stream`
+  pattern and a per-controller path-config recipe for mixed UDM /
+  Cloud Key fleets.
 - README: expanded "Self-Signed Certificates" section covering all three
   TLS modes (`verify_ssl: false`, fingerprint pinning, real CA), with an
   `openssl` recipe for extracting the fingerprint.

@@ -932,6 +932,63 @@ structs instead of `{:error, {status, body}}` tuples. Catch-all
 `{:error, _}` matches still work; only callers that pattern-matched the
 specific status codes need to update.
 
+## Multiple Controllers
+
+The library is stateless — every API call takes a `Req.Request.t()` as
+its first argument and the request struct holds all the configuration.
+Managing multiple controllers is just managing multiple request structs:
+
+```elixir
+controllers = %{
+  hq:     UnifiApi.new(base_url: "https://10.0.0.1",  api_key: hq_key),
+  branch: UnifiApi.new(base_url: "https://10.1.0.1",  api_key: branch_key),
+  home:   UnifiApi.new(base_url: "https://192.168.1.1", api_key: home_key)
+}
+
+# Pull devices from every controller in parallel
+controllers
+|> Task.async_stream(fn {name, client} ->
+     case UnifiApi.Network.Sites.list(client) do
+       {:ok, sites} -> {name, length(sites)}
+       {:error, _}  -> {name, :unreachable}
+     end
+   end,
+   max_concurrency: 5,
+   timeout: 10_000
+)
+|> Enum.to_list()
+```
+
+If the controllers use different path conventions (UDM vs Cloud Key),
+hold per-controller paths alongside the client and apply them as needed:
+
+```elixir
+defmodule MyApp.Controllers do
+  @controllers %{
+    hq:     %{client: UnifiApi.new(base_url: "https://10.0.0.1",   api_key: System.fetch_env!("HQ_KEY")),
+              v1: "/proxy/network", network: "/proxy/network/integration"},
+    branch: %{client: UnifiApi.new(base_url: "https://10.1.0.1",   api_key: System.fetch_env!("BRANCH_KEY")),
+              v1: "",               network: "/integration"}
+  }
+
+  def call(name, fun) do
+    %{client: client, v1: v1, network: network} = @controllers[name]
+    Application.put_env(:unifi_api, :v1_path, v1)
+    Application.put_env(:unifi_api, :network_path, network)
+    fun.(client)
+  end
+end
+
+MyApp.Controllers.call(:branch, fn client ->
+  UnifiApi.Network.Sites.list(client)
+end)
+```
+
+For long-running pollers that need cookie-authenticated v1 access on
+multiple controllers, log in once per controller at startup and reuse
+the authenticated request struct — `UnifiApi.Auth.Cookie.refresh_csrf/2`
+can refresh the CSRF token without a full re-login.
+
 ## Self-Signed Certificates
 
 UDM and Cloud Key controllers use self-signed TLS certificates by default.
