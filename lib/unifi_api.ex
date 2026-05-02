@@ -140,6 +140,38 @@ defmodule UnifiApi do
     end
   end
 
+  @doc """
+  Lightweight reachability check.
+
+  Issues `GET /` against the controller (with redirects disabled) and
+  returns `:ok` for any 2xx or 3xx — both are signs the controller is
+  alive and responding. Returns `{:error, reason}` for transport
+  failures or 4xx/5xx.
+
+  Auth-agnostic: works with both the integration API key client and a
+  cookie-authenticated client, since `/` is unauthenticated on every
+  controller flavour.
+
+  ## Examples
+
+      :ok = UnifiApi.ping(client)
+
+      case UnifiApi.ping(client) do
+        :ok -> :alive
+        {:error, _} -> :unreachable
+      end
+  """
+  @spec ping(Req.Request.t()) :: :ok | {:error, term()}
+  def ping(client) do
+    probe = Req.merge(client, redirect: false)
+
+    case Req.get(probe, url: "/") do
+      {:ok, %Req.Response{status: status}} when status in 200..399 -> :ok
+      {:ok, %Req.Response{status: status, body: body}} -> {:error, {status, body}}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
   defp info(:udm) do
     %{
       style: :udm,

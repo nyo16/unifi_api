@@ -103,6 +103,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CI: the `test` job now runs across three Elixir / OTP combinations
   (`1.18.0` on OTP 26.2.5, `1.18.3` on OTP 27.2, `1.18.4` on OTP 27.2)
   to catch compat regressions across the supported floor.
+- `UnifiApi.Client.stream_paged/2` — generic page-number paginator
+  (`pageSize` / `pageNumber` style) for endpoints that don't fit the
+  integration `offset`/`limit` or v1 `_start`/`_limit` patterns. Used
+  by the new v2 streams below.
+- `UnifiApi.Network.ClientsHistory.stream/3` and
+  `UnifiApi.Network.SystemLog.stream/3` — auto-paginated lazy streams,
+  closing the last gaps in the pagination audit.
+- `UnifiApi.ping/1` — auth-agnostic `GET /` reachability check.
+- `UnifiApi.Time` — `now_ms/0`, `minutes_ago/1`, `hours_ago/1`,
+  `days_ago/1` for the unix-millisecond timestamp params used by
+  `Protect.Events`, `Network.Traffic`, etc.
+- `UnifiApi.Network.Sites.find_by_name/2` and
+  `find_by_internal_reference/2` — resolve a site map by human-readable
+  name or controller slug without writing
+  `Sites.list(client) |> Enum.find(...)` boilerplate.
 - README: expanded "Self-Signed Certificates" section covering all three
   TLS modes (`verify_ssl: false`, fingerprint pinning, real CA), with an
   `openssl` recipe for extracting the fingerprint.

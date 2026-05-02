@@ -74,4 +74,23 @@ defmodule UnifiApiTest do
       assert {:error, {:unexpected_status, 500, _}} = UnifiApi.detect(client)
     end
   end
+
+  describe "ping/1" do
+    test "returns :ok for 2xx" do
+      client = test_client(fn conn -> Plug.Conn.send_resp(conn, 200, "") end)
+      assert :ok = UnifiApi.ping(client)
+    end
+
+    test "returns :ok for 302 / 303 (Cloud Key style redirect)" do
+      for status <- [301, 302, 303] do
+        client = test_client(fn conn -> Plug.Conn.send_resp(conn, status, "") end)
+        assert :ok = UnifiApi.ping(client)
+      end
+    end
+
+    test "returns {:error, {status, body}} for 4xx / 5xx" do
+      client = test_client(fn conn -> Plug.Conn.send_resp(conn, 503, "down") end)
+      assert {:error, {503, _}} = UnifiApi.ping(client)
+    end
+  end
 end

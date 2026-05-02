@@ -37,6 +37,27 @@ defmodule UnifiApi.Network.SystemLog do
     Client.get_v1(client, "#{prefix()}/v2/api/site/#{site_id}/system-log/all", params: params)
   end
 
+  @doc """
+  Returns a lazy stream that auto-paginates the system log via
+  `pageSize` / `pageNumber`.
+
+  ## Options
+
+    * `:limit` — page size (default 500).
+  """
+  @spec stream(Req.Request.t(), String.t(), keyword()) :: Enumerable.t()
+  def stream(client, site_id, opts \\ []) do
+    page_size = opts[:limit] || 500
+    path = "#{prefix()}/v2/api/site/#{site_id}/system-log/all"
+
+    Client.stream_paged(
+      fn page ->
+        Client.get_v1(client, path, params: [pageSize: page_size, pageNumber: page])
+      end,
+      limit: page_size
+    )
+  end
+
   defp maybe_param(params, _key, nil), do: params
   defp maybe_param(params, key, value), do: [{key, value} | params]
 

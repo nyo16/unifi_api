@@ -358,6 +358,69 @@ defmodule UnifiApi.Client do
   end
 
   @doc """
+  Generic page-number paginator for v2 endpoints that don't fit
+  `stream/3` or `stream_v1/3`.
+
+  Takes a `fetch_page` function that receives the current cursor and
+  returns `{:ok, list}` (the page of items) or `{:error, reason}`.
+  Halts when a page returns fewer than `:limit` items.
+
+  ## Options
+
+    * `:limit` — items per page (default 500). Used to detect the
+      last page (a short page halts the stream).
+    * `:start_at` — initial cursor value (default 0; for endpoints
+      that page from 1 set `start_at: 1`).
+    * `:increment` — how much to advance the cursor between pages.
+      Use `1` for `pageNumber`-style paging, or set to `:limit` (the
+      page size) for offset-style paging.
+
+  ## Examples
+
+      Client.stream_paged(
+        fn page ->
+          Client.get_v1(client, "/v2/api/site/default/system-log/all",
+            params: [pageSize: 500, pageNumber: page])
+        end,
+        limit: 500
+      )
+
+  Used by `UnifiApi.Network.ClientsHistory.stream/3` and
+  `UnifiApi.Network.SystemLog.stream/3`.
+  """
+  @spec stream_paged((non_neg_integer() -> response()), keyword()) :: Enumerable.t()
+  def stream_paged(fetch_page, opts \\ []) when is_function(fetch_page, 1) do
+    page_size = opts[:limit] || 500
+    initial = Keyword.get(opts, :start_at, 0)
+    increment = Keyword.get(opts, :increment, 1)
+
+    Stream.resource(
+      fn -> initial end,
+      fn
+        :halt ->
+          {:halt, :done}
+
+        cursor ->
+          case fetch_page.(cursor) do
+            {:ok, items} when is_list(items) ->
+              if length(items) < page_size,
+                do: {items, :halt},
+                else: {items, cursor + increment}
+
+            {:error, reason} ->
+              raise UnifiApi.StreamError, reason: reason, path: "stream_paged"
+
+            {:ok, non_list} ->
+              raise UnifiApi.StreamError,
+                reason: {:unexpected_response, non_list},
+                path: "stream_paged"
+          end
+      end,
+      fn _state -> :ok end
+    )
+  end
+
+  @doc """
   Like `stream/3` but for legacy v1 endpoints.
 
   Pages on `_start` / `_limit` (the v1 convention) rather than

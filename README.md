@@ -98,6 +98,32 @@ client = UnifiApi.new(base_url: "https://192.168.1.1", api_key: "my-key")
 {:ok, cameras} = UnifiApi.Protect.Cameras.list(client)
 ```
 
+## Quality-of-Life Helpers
+
+A few small utilities that show up everywhere:
+
+```elixir
+# Reachability — works against both API-key and cookie-authed clients
+:ok = UnifiApi.ping(client)
+
+# Detect controller style and the matching path conventions
+{:ok, %{style: :udm, network_prefix: _, v1_prefix: _, auth_path: _}} =
+  UnifiApi.detect(client)
+
+# Resolve a site by display name without listing manually
+{:ok, %{"id" => site_id}} = UnifiApi.Network.Sites.find_by_name(client, "HQ")
+{:ok, default} = UnifiApi.Network.Sites.find_by_internal_reference(client, "default")
+
+# Unix-millisecond helpers for time-window queries
+import UnifiApi.Time
+
+UnifiApi.Protect.Events.list(authed,
+  start: hours_ago(1),
+  end: now_ms(),
+  types: ["motion"]
+)
+```
+
 ## Network API
 
 All Network API functions require a `site_id` (except `Info`, `Resources.list_dpi_categories/2`, `Resources.list_dpi_applications/2`, `Resources.list_countries/2`, and `Devices.list_pending/2`).
@@ -591,6 +617,13 @@ Operational v1 API (`_start` / `_limit`, requires cookie auth):
 | Alarms | `stream/3` (with `:archived`) |
 | IDS | `stream/3` (with `:within_hours`) |
 
+Operational v2 API (`pageSize` / `pageNumber`, requires cookie auth):
+
+| Module | Function |
+|--------|----------|
+| ClientsHistory | `stream/3` (with `:within_hours`, `:type`, `:search`) |
+| SystemLog | `stream/3` |
+
 ```elixir
 # Stream every event in the last 24 hours, no manual paging
 UnifiApi.Network.Events.stream(authed, "default", within_hours: 24)
@@ -602,7 +635,9 @@ UnifiApi.Network.IDS.stream(authed, "default", within_hours: 1)
 ```
 
 For other v1 endpoints, drop down to `UnifiApi.Client.stream_v1/3`
-directly — it takes a path and arbitrary `:params`.
+directly — it takes a path and arbitrary `:params`. For arbitrary
+page-numbered v2 endpoints, use `UnifiApi.Client.stream_paged/2`
+with a custom `fetch_page` function.
 
 ### Manual pagination
 
