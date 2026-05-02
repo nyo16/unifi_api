@@ -5,4 +5,5 @@ config :unifi_api,
   api_key: System.get_env("UNIFI_API_KEY", ""),
   verify_ssl: System.get_env("UNIFI_VERIFY_SSL", "false") == "true",
   network_path: System.get_env("UNIFI_NETWORK_PATH", "/proxy/network/integration"),
-  protect_path: System.get_env("UNIFI_PROTECT_PATH", "/proxy/protect/integration")
+  protect_path: System.get_env("UNIFI_PROTECT_PATH", "/proxy/protect/integration"),
+  v1_path: System.get_env("UNIFI_V1_PATH", "/proxy/network")

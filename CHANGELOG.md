@@ -15,9 +15,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   self-signed certificate without disabling TLS validation entirely.
   Overrides `:verify_ssl` when present. Also configurable via
   `config :unifi_api, :cert_fingerprints, [...]`.
+- `UnifiApi.Auth.Cookie.login/4` for cookie + CSRF authentication. Use this
+  to access endpoints that Ubiquiti has not yet exposed under `x-api-key`
+  (events, alarms, IDS, anomalies, historical clients, DPI, topology, …)
+  and on Cloud Key controllers without an API key. Supports both
+  `:udm` (`/api/auth/login`) and `:cloud_key` (`/api/login`) styles.
+  Also exposes `refresh_csrf/2`, `csrf_token/1`, and `logout/2`.
+  CSRF rotation is **not** auto-handled in this release — see the module
+  docs for trade-offs.
+- `UnifiApi.detect/1` probes `GET /` and reports whether the controller is
+  UniFi OS (`:udm`) or a standalone / Cloud Key (`:cloud_key`), returning a
+  bundle with `network_prefix`, `protect_prefix`, `v1_prefix`, and
+  `auth_path`. Heuristic mirrors `unpoller/unpoller`.
+- `UnifiApi.Client.v1_prefix/0` and matching `:v1_path` config key
+  (default `/proxy/network`, override with `""` for Cloud Key or
+  `UNIFI_V1_PATH`) to support the upcoming legacy `/api/s/{site}/...`
+  endpoint modules.
 - README: expanded "Self-Signed Certificates" section covering all three
   TLS modes (`verify_ssl: false`, fingerprint pinning, real CA), with an
   `openssl` recipe for extracting the fingerprint.
+
+### Notes
+
+- `UnifiApi.Auth.Cookie` and `UnifiApi.detect/1` are unit-tested against
+  mocked `Req.Test` plugs but not yet exercised end-to-end against live
+  UDM Pro and Cloud Key hardware. Please file an issue with controller
+  model and firmware version if you encounter shape mismatches.
 
 ## [0.3.0] - 2026-05-02
 

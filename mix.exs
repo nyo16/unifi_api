@@ -71,6 +71,9 @@ defmodule UnifiApi.MixProject do
           UnifiApi.RateLimitError,
           UnifiApi.StreamError
         ],
+        Authentication: [
+          UnifiApi.Auth.Cookie
+        ],
         "Protect API": [
           UnifiApi.Protect.Cameras,
           UnifiApi.Protect.NVR,

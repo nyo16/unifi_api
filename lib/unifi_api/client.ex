@@ -126,6 +126,23 @@ defmodule UnifiApi.Client do
   end
 
   @doc """
+  Returns the legacy v1 Network API path prefix.
+
+  This is the prefix for the older `/api/s/{site}/...` and
+  `/v2/api/site/{site}/...` endpoints (events, alarms, IDS, anomalies,
+  historical clients, DPI, topology, etc.) that Ubiquiti has not yet
+  exposed under `x-api-key`. These endpoints require cookie + CSRF auth
+  via `UnifiApi.Auth.Cookie`.
+
+  Defaults to `"/proxy/network"` (UDM). For Cloud Key / standalone
+  controllers, configure `v1_path: ""` in application config.
+  """
+  @spec v1_prefix() :: String.t()
+  def v1_prefix do
+    Application.get_env(:unifi_api, :v1_path, "/proxy/network")
+  end
+
+  @doc """
   Performs a GET request.
 
   ## Options
