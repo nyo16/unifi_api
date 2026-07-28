@@ -4,6 +4,31 @@ defmodule UnifiApi.Network.Devices do
 
   Manage adopted UniFi devices (APs, switches, gateways), view statistics,
   execute device and port actions, and list pending adoption requests.
+
+  ## Device fields
+
+    * `id`, `name`, `mac`, `ip`
+    * `model`, `modelName` — hardware model identifiers (e.g. `"US-24-250W"`)
+    * `state` — `"CONNECTED"`, `"CONNECTING"`, `"DISCONNECTED"`, `"PENDING"`,
+      `"ADOPTING"`, `"PROVISIONING"`, `"UNREACHABLE"`, or `"UPGRADING"`
+    * `adopted` — boolean
+    * `firmwareVersion`
+    * `uplink` — uplink interface metadata (deviceId, port idx, mac)
+    * `features` — feature flags supported by this device
+    * `interfaces` — `%{ "ports" => [...], "radios" => [...] }` for switches/APs
+
+  ## Statistics fields (`get_statistics/3`)
+
+    * `uptimeSec`, `lastHeartbeatAt`
+    * `loadAverage1Min`, `loadAverage5Min`, `loadAverage15Min`
+    * `cpuUtilizationPct`, `memoryUtilizationPct`
+    * `uplink` — `%{ "rxRateBps" => _, "txRateBps" => _ }`
+    * `interfaces` — per-port/radio counters (rx/tx packets, bytes, errors)
+
+  ## Pending devices (`list_pending/2`)
+
+  Devices reachable on the network that have not yet been adopted. Each entry
+  has `mac`, `model`, `firmwareVersion`, and `ip`.
   """
 
   alias UnifiApi.Client

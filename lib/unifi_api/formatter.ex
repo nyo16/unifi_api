@@ -177,6 +177,55 @@ defmodule UnifiApi.Formatter do
     table(data, ["name", "id", "internalReference"], title: "Sites")
   end
 
+  @doc """
+  Shortcut: prints events from `UnifiApi.Network.Events.list/3` as a
+  table with subsystem colour-coding.
+
+  ## Examples
+
+      {:ok, events} = UnifiApi.Network.Events.list(authed, "default", within_hours: 1)
+      UnifiApi.Formatter.events(events)
+  """
+  @spec events(list(map()) | map()) :: :ok
+  def events(data) do
+    table(data, ["datetime", "key", "subsystem", "msg"],
+      title: "Events",
+      colors: %{"subsystem" => :subsystem}
+    )
+  end
+
+  @doc """
+  Shortcut: prints alarms from `UnifiApi.Network.Alarms.list/3` as a
+  table with severity colour-coding.
+  """
+  @spec alarms(list(map()) | map()) :: :ok
+  def alarms(data) do
+    table(data, ["datetime", "severity", "subsystem", "key", "msg"],
+      title: "Alarms",
+      colors: %{"severity" => :severity, "subsystem" => :subsystem}
+    )
+  end
+
+  @doc """
+  Shortcut: prints live wireless clients from
+  `UnifiApi.Network.ClientsLive.list/2`.
+  """
+  @spec clients_live(list(map()) | map()) :: :ok
+  def clients_live(data) do
+    table(data, ["hostname", "mac", "ip", "signal", "satisfaction", "essid", "ap_name"],
+      title: "Clients (live)",
+      colors: %{"signal" => :rssi, "satisfaction" => :satisfaction}
+    )
+  end
+
+  @doc """
+  Shortcut: prints anomalies from `UnifiApi.Network.Anomalies.list/3`.
+  """
+  @spec anomalies(list(map()) | map()) :: :ok
+  def anomalies(data) do
+    table(data, ["datetime", "anomaly", "mac", "ap", "count"], title: "Anomalies")
+  end
+
   # --- Private ---
 
   defp get_value(map, key) when is_map(map) do
@@ -244,6 +293,54 @@ defmodule UnifiApi.Formatter do
       "VPN" -> IO.ANSI.cyan()
       "TELEPORT" -> IO.ANSI.yellow()
       _ -> ""
+    end
+  end
+
+  defp get_color(value, :subsystem) do
+    case value do
+      "wlan" -> IO.ANSI.magenta()
+      "lan" -> IO.ANSI.blue()
+      "wan" -> IO.ANSI.cyan()
+      "vpn" -> IO.ANSI.cyan()
+      "ips" -> IO.ANSI.red()
+      "system" -> IO.ANSI.yellow()
+      "alarm" -> IO.ANSI.red()
+      _ -> ""
+    end
+  end
+
+  defp get_color(value, :severity) do
+    case value do
+      "critical" -> IO.ANSI.red()
+      "error" -> IO.ANSI.red()
+      "warn" -> IO.ANSI.yellow()
+      "warning" -> IO.ANSI.yellow()
+      "info" -> IO.ANSI.blue()
+      _ -> ""
+    end
+  end
+
+  # WiFi RSSI in dBm. Closer to 0 is stronger.
+  #   >= -60 → green (excellent)
+  #   -60..-70 → yellow
+  #   < -70 → red
+  defp get_color(value, :rssi) do
+    case Integer.parse(value) do
+      {n, _} when n >= -60 -> IO.ANSI.green()
+      {n, _} when n >= -70 -> IO.ANSI.yellow()
+      {_, _} -> IO.ANSI.red()
+      :error -> ""
+    end
+  end
+
+  # UniFi "satisfaction" score, 0..100.
+  #   >= 80 → green, 50..79 → yellow, < 50 → red
+  defp get_color(value, :satisfaction) do
+    case Integer.parse(value) do
+      {n, _} when n >= 80 -> IO.ANSI.green()
+      {n, _} when n >= 50 -> IO.ANSI.yellow()
+      {_, _} -> IO.ANSI.red()
+      :error -> ""
     end
   end
 

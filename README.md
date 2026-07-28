@@ -1,5 +1,10 @@
 # UnifiApi
 
+[![CI](https://github.com/nyo16/unifi_api/actions/workflows/ci.yml/badge.svg)](https://github.com/nyo16/unifi_api/actions/workflows/ci.yml)
+[![Hex.pm](https://img.shields.io/hexpm/v/unifi_api.svg)](https://hex.pm/packages/unifi_api)
+[![HexDocs](https://img.shields.io/badge/hex-docs-blue.svg)](https://hexdocs.pm/unifi_api)
+[![License](https://img.shields.io/hexpm/l/unifi_api.svg)](https://github.com/nyo16/unifi_api/blob/master/LICENSE)
+
 Elixir HTTP client for **UniFi Dream Machine** APIs, covering both the **Network API** (v10.1.84) and the **Protect API** (v6.2.88). Built on [Req](https://hexdocs.pm/req).
 
 ## Installation
@@ -9,7 +14,7 @@ Add `unifi_api` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:unifi_api, "~> 0.2.0"}
+    {:unifi_api, "~> 0.3.0"}
   ]
 end
 ```
@@ -91,6 +96,32 @@ client = UnifiApi.new(base_url: "https://192.168.1.1", api_key: "my-key")
 
 # List Protect cameras
 {:ok, cameras} = UnifiApi.Protect.Cameras.list(client)
+```
+
+## Quality-of-Life Helpers
+
+A few small utilities that show up everywhere:
+
+```elixir
+# Reachability — works against both API-key and cookie-authed clients
+:ok = UnifiApi.ping(client)
+
+# Detect controller style and the matching path conventions
+{:ok, %{style: :udm, network_prefix: _, v1_prefix: _, auth_path: _}} =
+  UnifiApi.detect(client)
+
+# Resolve a site by display name without listing manually
+{:ok, %{"id" => site_id}} = UnifiApi.Network.Sites.find_by_name(client, "HQ")
+{:ok, default} = UnifiApi.Network.Sites.find_by_internal_reference(client, "default")
+
+# Unix-millisecond helpers for time-window queries
+import UnifiApi.Time
+
+UnifiApi.Protect.Events.list(authed,
+  start: hours_ago(1),
+  end: now_ms(),
+  types: ["motion"]
+)
 ```
 
 ## Network API
@@ -371,6 +402,150 @@ File.write!("snapshot.jpg", jpeg)
 # Each has: id, name, state, cameraIds, ringSettings
 ```
 
+## Operational Data (Legacy v1 / v2 API)
+
+The integration API doesn't expose the operational and monitoring data
+ops users actually want — events, alarms, IDS detections, rich live
+wireless stats, topology, traffic, WAN health, and so on. These live on
+the legacy `/api/s/{site}/...` and `/v2/api/site/{site}/...` paths and
+require **cookie + CSRF authentication** rather than `x-api-key`.
+
+### Authenticate (one-shot scripts)
+
+```elixir
+# Build an unauthenticated client, then log in.
+client = UnifiApi.new(base_url: "https://192.168.1.1", verify_ssl: false)
+
+{:ok, authed} = UnifiApi.Auth.Cookie.login(client, "admin", "password",
+  style: :udm  # or :cloud_key
+)
+```
+
+If you're not sure which style your controller uses, probe it first:
+
+```elixir
+{:ok, info} = UnifiApi.detect(client)
+{:ok, authed} = UnifiApi.Auth.Cookie.login(client, user, pass, style: info.style)
+```
+
+For Cloud Key controllers, also set
+`Application.put_env(:unifi_api, :v1_path, "")` (default is
+`/proxy/network` for UDM).
+
+### Authenticate (long-running app)
+
+For pollers and supervised processes that need cookie auth over hours
+or days, `UnifiApi.Auth.Cookie.login/4`'s static request struct goes
+stale when the controller rotates the CSRF token. Use
+`UnifiApi.Auth.Session` instead — a supervised GenServer that holds
+the cookie + CSRF state and auto-rotates the token from response
+headers:
+
+```elixir
+children = [
+  {UnifiApi.Auth.Session,
+   name: MyApp.UnifiSession,
+   client: UnifiApi.new(base_url: "https://192.168.1.1", verify_ssl: false),
+   username: System.fetch_env!("UNIFI_USERNAME"),
+   password: System.fetch_env!("UNIFI_PASSWORD"),
+   style: :udm}
+]
+
+Supervisor.start_link(children, strategy: :one_for_one)
+
+# Anywhere in your app:
+authed = UnifiApi.Auth.Session.client(MyApp.UnifiSession)
+{:ok, events} = UnifiApi.Network.Events.list(authed, "default")
+```
+
+Every request through `authed` pulls the current cookies + CSRF from
+the GenServer at send time and writes back any rotated token captured
+from the response. `Session.refresh/1` and `Session.relogin/1` are
+escape hatches for the rare case the auto-rotation misses.
+
+### Available modules
+
+| Module | Endpoint | Purpose |
+|--------|----------|---------|
+| `Network.Events` | `/stat/event` | Client/AP/system events |
+| `Network.Alarms` | `/list/alarm` | Active and archived alarms |
+| `Network.Anomalies` | `/stat/anomalies` | Diagnostic anomalies |
+| `Network.IDS` | `/stat/ips/event` | IDS / IPS detections |
+| `Network.RogueAP` | `/stat/rogueap`, `/rest/rogueknown` | Neighbouring / rogue APs |
+| `Network.ClientsLive` | `/stat/sta`, `/stat/alluser` | Rich wireless stats; offline history |
+| `Network.ClientsHistory` | `/v2/.../clients/history` | Searchable client history |
+| `Network.DPI` | `/stat/sitedpi`, `/stat/stadpi` | DPI by site / per-client |
+| `Network.Traffic` | `/v2/.../traffic`, `/country-traffic` | Time-series by client / country |
+| `Network.SystemLog` | `/v2/.../system-log/all` | Controller system log |
+| `Network.ActiveLeases` | `/v2/.../active-leases` | Live DHCP table |
+| `Network.WAN` | `/v2/.../wan/...`, `/wan-slas` | WAN config, ISP status, SLAs |
+| `Network.PortAnomalies` | `/v2/.../ports/port-anomalies` | Switch port anomalies |
+| `Network.UPS` | `/stat/ups-devices` | UPS battery / load |
+| `Network.PortForward` | `/rest/portforward` | NAT port forward CRUD |
+| `Network.Dashboard` | `/v2/.../aggregated-dashboard` | One-shot dashboard payload |
+| `Network.Topology` | `/v2/.../topology` | Topology graph |
+| `Protect.Events` | `/proxy/protect/api/events` | Motion, ring, smartDetect events + thumbnails |
+
+### Quick example
+
+```elixir
+# Recent events (last 24 hours, up to 1000)
+{:ok, events} = UnifiApi.Network.Events.list(authed, "default",
+  within_hours: 24, limit: 1000)
+
+# Worst-RSSI wireless clients right now
+{:ok, clients} = UnifiApi.Network.ClientsLive.list(authed, "default")
+worst =
+  clients
+  |> Enum.reject(& &1["is_wired"])
+  |> Enum.sort_by(& &1["signal"])
+  |> Enum.take(10)
+
+# All Protect motion events in the last hour, with thumbnails
+hour_ago = System.os_time(:millisecond) - 60 * 60 * 1000
+{:ok, motion} =
+  UnifiApi.Protect.Events.list(authed, start: hour_ago, types: ["motion"])
+
+for ev <- motion do
+  {:ok, jpeg} = UnifiApi.Protect.Events.thumbnail(authed, ev["id"])
+  File.write!("event-#{ev["id"]}.jpg", jpeg)
+end
+```
+
+### DPI with names
+
+The legacy DPI endpoints return numeric `cat` and `app` IDs only.
+Combine them with the integration-API category / application lists
+via `UnifiApi.Network.DPI.with_names/2`:
+
+```elixir
+# These don't change often — fetch once, reuse:
+{:ok, categories} = UnifiApi.Network.Resources.list_dpi_categories(client)
+{:ok, applications} = UnifiApi.Network.Resources.list_dpi_applications(client)
+
+# Then on every poll:
+{:ok, dpi} = UnifiApi.Network.DPI.by_site(authed, "default")
+
+named =
+  UnifiApi.Network.DPI.with_names(dpi,
+    categories: categories,
+    applications: applications
+  )
+
+# Top 10 apps by tx_bytes
+named
+|> Enum.flat_map(& &1["by_app"])
+|> Enum.sort_by(& &1["tx_bytes"], :desc)
+|> Enum.take(10)
+|> Enum.map(&{&1["application_name"], &1["tx_bytes"]})
+```
+
+> **Note:** v1 / v2 endpoint shapes are documented from community
+> sources (primarily `unpoller/unpoller`). They have not been exercised
+> end-to-end against live UDM Pro / Cloud Key hardware in v0.3.0. Please
+> file an issue with controller model and firmware version if anything
+> looks off — most fixes will be one-line tweaks.
+
 ## Streaming & Pagination
 
 Every list endpoint has a `stream` variant that returns a lazy `Stream` powered by
@@ -418,6 +593,8 @@ Stream functions raise on API errors, making them safe to compose in pipelines.
 
 ### Available stream functions
 
+Integration API (offset / limit):
+
 | Module | Function |
 |--------|----------|
 | Sites | `stream/2` |
@@ -431,6 +608,36 @@ Stream functions raise on API errors, making them safe to compose in pipelines.
 | DNS | `stream/3` |
 | TrafficMatching | `stream/3` |
 | Resources | `stream_wans/3`, `stream_vpn_tunnels/3`, `stream_vpn_servers/3`, `stream_radius_profiles/3`, `stream_device_tags/3`, `stream_dpi_categories/2`, `stream_dpi_applications/2`, `stream_countries/2` |
+
+Operational v1 API (`_start` / `_limit`, requires cookie auth):
+
+| Module | Function |
+|--------|----------|
+| Events | `stream/3` (with `:within_hours`) |
+| Alarms | `stream/3` (with `:archived`) |
+| IDS | `stream/3` (with `:within_hours`) |
+
+Operational v2 API (`pageSize` / `pageNumber`, requires cookie auth):
+
+| Module | Function |
+|--------|----------|
+| ClientsHistory | `stream/3` (with `:within_hours`, `:type`, `:search`) |
+| SystemLog | `stream/3` |
+
+```elixir
+# Stream every event in the last 24 hours, no manual paging
+UnifiApi.Network.Events.stream(authed, "default", within_hours: 24)
+|> Enum.to_list()
+
+# Top 5 most recent IDS detections
+UnifiApi.Network.IDS.stream(authed, "default", within_hours: 1)
+|> Enum.take(5)
+```
+
+For other v1 endpoints, drop down to `UnifiApi.Client.stream_v1/3`
+directly — it takes a path and arbitrary `:params`. For arbitrary
+page-numbered v2 endpoints, use `UnifiApi.Client.stream_paged/2`
+with a custom `fetch_page` function.
 
 ### Manual pagination
 
@@ -783,6 +990,27 @@ UnifiApi.Formatter.cameras(cameras)
 UnifiApi.Formatter.networks(networks)
 ```
 
+Operational (v1) shortcuts (use the cookie-auth `authed` from
+`UnifiApi.Auth.Cookie.login/4` or `UnifiApi.Auth.Session.client/1`):
+
+```elixir
+{:ok, events} = UnifiApi.Network.Events.list(authed, "default", within_hours: 1)
+UnifiApi.Formatter.events(events)
+# subsystem column is color-coded: magenta=wlan, blue=lan, cyan=wan, red=ips, ...
+
+{:ok, alarms} = UnifiApi.Network.Alarms.list(authed, "default")
+UnifiApi.Formatter.alarms(alarms)
+# severity column is color-coded: red=critical, yellow=warn, blue=info
+
+{:ok, clients} = UnifiApi.Network.ClientsLive.list(authed, "default")
+UnifiApi.Formatter.clients_live(clients)
+# signal column buckets RSSI by strength (green ≥ -60, yellow -60..-70, red < -70)
+# satisfaction column buckets the 0..100 score (green ≥ 80, yellow ≥ 50, red < 50)
+
+{:ok, anomalies} = UnifiApi.Network.Anomalies.list(authed, "default")
+UnifiApi.Formatter.anomalies(anomalies)
+```
+
 ### Custom tables
 
 ```elixir
@@ -798,25 +1026,176 @@ UnifiApi.Formatter.table(devices, ["name", "mac", "model", "state", "ip"],
 UnifiApi.Formatter.detail(nvr, title: "NVR Info")
 ```
 
+### Built-in colour rules
+
+Pass any of these as values in the `:colors` map on `table/3` to
+colour a column based on its cell value:
+
+| Rule | Behaviour |
+|------|-----------|
+| `:state` | `CONNECTED`/`ONLINE` → green, `CONNECTING`/`UPDATING` → yellow, `DISCONNECTED`/`OFFLINE` → red |
+| `:type` | `WIRED` → blue, `WIRELESS` → magenta, `VPN` → cyan, `TELEPORT` → yellow |
+| `:subsystem` | `wlan` → magenta, `lan` → blue, `wan`/`vpn` → cyan, `ips`/`alarm` → red, `system` → yellow |
+| `:severity` | `critical`/`error` → red, `warn`/`warning` → yellow, `info` → blue |
+| `:rssi` | numeric dBm: ≥ -60 green, ≥ -70 yellow, else red |
+| `:satisfaction` | numeric 0..100: ≥ 80 green, ≥ 50 yellow, else red |
+
 ## Error Handling
 
-All functions return `{:ok, body}` on success or `{:error, reason}` on failure:
+All functions return `{:ok, body}` on success or `{:error, reason}` on failure.
+
+Auth and rate-limit errors are surfaced as exception structs so callers can
+pattern-match without inspecting the status code:
 
 ```elixir
 case UnifiApi.Network.Devices.get(client, site_id, "bad-id") do
   {:ok, device} ->
     IO.inspect(device)
 
+  {:error, %UnifiApi.AuthError{reason: :unauthorized}} ->
+    IO.puts("Invalid API key")
+
+  {:error, %UnifiApi.AuthError{reason: :forbidden}} ->
+    IO.puts("API key lacks permission")
+
+  {:error, %UnifiApi.RateLimitError{retry_after: seconds}} ->
+    Process.sleep(seconds * 1000)
+    retry()
+
   {:error, {404, body}} ->
     IO.puts("Not found: #{inspect(body)}")
 
-  {:error, {401, _}} ->
-    IO.puts("Invalid API key")
+  {:error, {status, body}} ->
+    IO.puts("HTTP #{status}: #{inspect(body)}")
 
   {:error, reason} ->
-    IO.puts("Connection error: #{inspect(reason)}")
+    IO.puts("Transport error: #{inspect(reason)}")
 end
 ```
+
+Other non-2xx responses are returned as `{:error, {status, body}}` tuples.
+
+### Upgrading from a previous version
+
+See [UPGRADING.md](UPGRADING.md) for breaking-change details and concrete
+before/after examples. The headline change in 0.3.0: 401, 403, and 429
+responses now return `%UnifiApi.AuthError{}` and `%UnifiApi.RateLimitError{}`
+structs instead of `{:error, {status, body}}` tuples. Catch-all
+`{:error, _}` matches still work; only callers that pattern-matched the
+specific status codes need to update.
+
+## Multiple Controllers
+
+The library is stateless — every API call takes a `Req.Request.t()` as
+its first argument and the request struct holds all the configuration.
+Managing multiple controllers is just managing multiple request structs:
+
+```elixir
+controllers = %{
+  hq:     UnifiApi.new(base_url: "https://10.0.0.1",  api_key: hq_key),
+  branch: UnifiApi.new(base_url: "https://10.1.0.1",  api_key: branch_key),
+  home:   UnifiApi.new(base_url: "https://192.168.1.1", api_key: home_key)
+}
+
+# Pull devices from every controller in parallel
+controllers
+|> Task.async_stream(fn {name, client} ->
+     case UnifiApi.Network.Sites.list(client) do
+       {:ok, sites} -> {name, length(sites)}
+       {:error, _}  -> {name, :unreachable}
+     end
+   end,
+   max_concurrency: 5,
+   timeout: 10_000
+)
+|> Enum.to_list()
+```
+
+If the controllers use different path conventions (UDM vs Cloud Key),
+hold per-controller paths alongside the client and apply them as needed:
+
+```elixir
+defmodule MyApp.Controllers do
+  @controllers %{
+    hq:     %{client: UnifiApi.new(base_url: "https://10.0.0.1",   api_key: System.fetch_env!("HQ_KEY")),
+              v1: "/proxy/network", network: "/proxy/network/integration"},
+    branch: %{client: UnifiApi.new(base_url: "https://10.1.0.1",   api_key: System.fetch_env!("BRANCH_KEY")),
+              v1: "",               network: "/integration"}
+  }
+
+  def call(name, fun) do
+    %{client: client, v1: v1, network: network} = @controllers[name]
+    Application.put_env(:unifi_api, :v1_path, v1)
+    Application.put_env(:unifi_api, :network_path, network)
+    fun.(client)
+  end
+end
+
+MyApp.Controllers.call(:branch, fn client ->
+  UnifiApi.Network.Sites.list(client)
+end)
+```
+
+For long-running pollers that need cookie-authenticated v1 access on
+multiple controllers, log in once per controller at startup and reuse
+the authenticated request struct — `UnifiApi.Auth.Cookie.refresh_csrf/2`
+can refresh the CSRF token without a full re-login.
+
+## Self-Signed Certificates
+
+UDM and Cloud Key controllers use self-signed TLS certificates by default.
+You have three options:
+
+### 1. No verification (default — easy, weakest)
+
+```elixir
+client = UnifiApi.new(verify_ssl: false)  # default
+```
+
+The connection is encrypted but unauthenticated. Anyone on the network path
+between you and the controller could intercept traffic without detection.
+Fine for local trusted networks; **don't ship this to production**.
+
+### 2. Fingerprint pinning (recommended for self-signed setups)
+
+```elixir
+client = UnifiApi.new(
+  base_url: "https://192.168.1.1",
+  api_key: "abc",
+  cert_fingerprints: ["sha256:AB:CD:EF:..."]
+)
+```
+
+The TLS handshake is rejected unless the controller's leaf certificate
+matches one of the configured SHA-256 fingerprints. This pins the
+connection to the specific physical device — much stronger than
+`verify_ssl: false` without requiring a CA.
+
+Get the fingerprint with `openssl`:
+
+```bash
+echo | openssl s_client -connect 192.168.1.1:443 2>/dev/null \
+  | openssl x509 -fingerprint -sha256 -noout
+# => sha256 Fingerprint=AB:CD:EF:...
+```
+
+Accepted formats:
+
+```elixir
+cert_fingerprints: ["sha256:AB:CD:EF:01:..."]    # ssh-keygen / openssl style
+cert_fingerprints: ["AB:CD:EF:01:..."]            # without prefix
+cert_fingerprints: ["abcdef01..."]                # plain 64-char hex
+cert_fingerprints: ["fp1...", "fp2..."]           # multiple (e.g. cert rotation)
+```
+
+### 3. Real CA verification
+
+```elixir
+client = UnifiApi.new(verify_ssl: true)
+```
+
+Use this if you've installed your own CA on the controller and trusted it
+at the OS level. The strongest option, but rarely how UniFi gear is run.
 
 ## Generating Docs
 

@@ -91,14 +91,23 @@ jobs:
       - run: mix credo --strict
 
   test:
-    name: Tests (${{ matrix.os }} / OTP ${{ matrix.otp }} / Elixir ${{ matrix.elixir }})
+    name: Tests (OTP ${{ matrix.otp }} / Elixir ${{ matrix.elixir }})
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         include:
+          # Minimum supported: Elixir 1.18 (stdlib JSON) on OTP 26.
+          - os: ubuntu-latest
+            elixir: "1.18.0"
+            otp: "26.2.5"
+          # Canonical combo also used by format / credo / dialyzer / publish.
           - os: ubuntu-latest
             elixir: "1.18.3"
+            otp: "27.2"
+          # Latest in the 1.18 line on the latest OTP.
+          - os: ubuntu-latest
+            elixir: "1.18.4"
             otp: "27.2"
     steps:
       - uses: actions/checkout@v6

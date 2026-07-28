@@ -1,7 +1,7 @@
 defmodule UnifiApi.MixProject do
   use Mix.Project
 
-  @version "0.2.0"
+  @version "0.3.0"
 
   def project do
     [
@@ -34,15 +34,20 @@ defmodule UnifiApi.MixProject do
   # Run "mix help deps" to learn about dependencies.
   defp package do
     [
+      maintainers: ["Niko Maroulis"],
       licenses: ["Apache-2.0"],
-      links: %{"GitHub" => "https://github.com/nyo16/unifi_api"}
+      links: %{
+        "GitHub" => "https://github.com/nyo16/unifi_api",
+        "Changelog" => "https://github.com/nyo16/unifi_api/blob/master/CHANGELOG.md",
+        "Upgrading" => "https://github.com/nyo16/unifi_api/blob/master/UPGRADING.md"
+      }
     ]
   end
 
   defp docs do
     [
       main: "readme",
-      extras: ["README.md", "LICENSE"],
+      extras: ["README.md", "CHANGELOG.md", "UPGRADING.md", "LICENSE"],
       groups_for_modules: [
         "Network API": [
           UnifiApi.Network.Info,
@@ -58,8 +63,36 @@ defmodule UnifiApi.MixProject do
           UnifiApi.Network.TrafficMatching,
           UnifiApi.Network.Resources
         ],
+        "Network API (Operational, v1)": [
+          UnifiApi.Network.ActiveLeases,
+          UnifiApi.Network.Alarms,
+          UnifiApi.Network.Anomalies,
+          UnifiApi.Network.ClientsHistory,
+          UnifiApi.Network.ClientsLive,
+          UnifiApi.Network.Dashboard,
+          UnifiApi.Network.DPI,
+          UnifiApi.Network.Events,
+          UnifiApi.Network.IDS,
+          UnifiApi.Network.PortAnomalies,
+          UnifiApi.Network.PortForward,
+          UnifiApi.Network.RogueAP,
+          UnifiApi.Network.SystemLog,
+          UnifiApi.Network.Topology,
+          UnifiApi.Network.Traffic,
+          UnifiApi.Network.UPS,
+          UnifiApi.Network.WAN
+        ],
         Utilities: [
           UnifiApi.Formatter
+        ],
+        Errors: [
+          UnifiApi.AuthError,
+          UnifiApi.RateLimitError,
+          UnifiApi.StreamError
+        ],
+        Authentication: [
+          UnifiApi.Auth.Cookie,
+          UnifiApi.Auth.Session
         ],
         "Protect API": [
           UnifiApi.Protect.Cameras,
@@ -69,6 +102,9 @@ defmodule UnifiApi.MixProject do
           UnifiApi.Protect.Sensors,
           UnifiApi.Protect.Lights,
           UnifiApi.Protect.Chimes
+        ],
+        "Protect API (v1)": [
+          UnifiApi.Protect.Events
         ]
       ]
     ]
