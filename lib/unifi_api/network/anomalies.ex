@@ -20,7 +20,7 @@ defmodule UnifiApi.Network.Anomalies do
   > optional.
   """
 
-  alias UnifiApi.Client
+  use UnifiApi.Resource, api: :network_v1
 
   @doc """
   Lists site anomalies.
@@ -30,7 +30,8 @@ defmodule UnifiApi.Network.Anomalies do
     * `:within_hours` — return anomalies seen within the last N hours
       (sent as `within=N`).
   """
-  @spec list(Req.Request.t(), String.t(), keyword()) :: {:ok, term()} | {:error, term()}
+  @spec list(Req.Request.t(), String.t(), keyword()) ::
+          {:ok, term()} | {:error, UnifiApi.Error.t()}
   def list(client, site_id, opts \\ []) do
     params =
       case opts[:within_hours] do
@@ -38,8 +39,8 @@ defmodule UnifiApi.Network.Anomalies do
         n -> [{:within, n}]
       end
 
-    Client.get_v1(client, "#{prefix()}/api/s/#{site_id}/stat/anomalies", params: params)
+    Client.get_v1(client, "#{prefix(client)}/api/s/#{id!(site_id)}/stat/anomalies",
+      params: params
+    )
   end
-
-  defp prefix, do: Client.v1_prefix()
 end

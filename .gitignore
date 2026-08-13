@@ -25,3 +25,7 @@ unifi_api-*.tar
 # Dialyzer PLT cache
 /priv/plts/
 
+
+# Local agent/tooling state
+/.claude/
+/.opencode/

@@ -21,7 +21,7 @@ defmodule UnifiApi.Network.Dashboard do
     * `wanStatus` — per-WAN reachability
   """
 
-  alias UnifiApi.Client
+  use UnifiApi.Resource, api: :network_v1
 
   @doc """
   Returns the aggregated dashboard payload.
@@ -39,14 +39,15 @@ defmodule UnifiApi.Network.Dashboard do
       {:ok, weekly} = UnifiApi.Network.Dashboard.get(client, "default",
         history_seconds: 604_800)
   """
-  @spec get(Req.Request.t(), String.t(), keyword()) :: {:ok, term()} | {:error, term()}
+  @spec get(Req.Request.t(), String.t(), keyword()) ::
+          {:ok, term()} | {:error, UnifiApi.Error.t()}
   def get(client, site_id, opts \\ []) do
     seconds = Keyword.get(opts, :history_seconds, 3600)
 
-    Client.get_v1(client, "#{prefix()}/v2/api/site/#{site_id}/aggregated-dashboard",
+    Client.get_v1(
+      client,
+      "#{prefix(client)}/v2/api/site/#{id!(site_id)}/aggregated-dashboard",
       params: [historySeconds: seconds]
     )
   end
-
-  defp prefix, do: Client.v1_prefix()
 end

@@ -6,7 +6,7 @@ defmodule UnifiApi.Network.Sites do
   require a `site_id` obtained from this module.
   """
 
-  alias UnifiApi.Client
+  use UnifiApi.Resource, api: :network
 
   @doc """
   Lists all sites on the controller.
@@ -24,18 +24,41 @@ defmodule UnifiApi.Network.Sites do
       {:ok, [site | _]} = UnifiApi.Network.Sites.list(client)
       site_id = site["id"]
   """
-  @spec list(Req.Request.t(), keyword()) :: {:ok, term()} | {:error, term()}
+  @spec list(Req.Request.t(), keyword()) :: {:ok, term()} | {:error, UnifiApi.Error.t()}
   def list(client, opts \\ []) do
-    Client.get(client, "#{prefix()}/v1/sites", opts)
+    Client.get(client, "#{prefix(client)}/v1/sites", opts)
   end
 
   @doc """
   Returns a lazy stream that auto-paginates through all sites.
 
+  ## Error contract
+
+  A mid-stream error does **not** raise by default: the stream halts and
+  yields `{:error, %UnifiApi.StreamError{}, last_offset}` as its final
+  element, so the enumerable is heterogeneous and
+  `Enum.map(stream, & &1["name"])` crashes on a transient 500. Match the
+  tail:
+
+      items = Enum.to_list(stream)
+
+      case List.last(items) do
+        {:error, error, cursor} -> {:error, error, cursor}
+        _ -> {:ok, items}
+      end
+
+  Pass `raise_errors: true` to raise `UnifiApi.StreamError` instead.
+
   ## Options
 
     * `:limit` — items per page (default: 200)
     * `:filter` — UniFi filter expression
+    * `:max_pages` — halt after this many successful pages (default:
+      unbounded).
+    * `:max_items` — halt once this many sites have been yielded (default:
+      unbounded).
+    * `:raise_errors` — raise `UnifiApi.StreamError` on a mid-stream error
+      instead of yielding the error tuple (default: `false`).
 
   ## Examples
 
@@ -44,7 +67,7 @@ defmodule UnifiApi.Network.Sites do
   """
   @spec stream(Req.Request.t(), keyword()) :: Enumerable.t()
   def stream(client, opts \\ []) do
-    Client.stream(client, "#{prefix()}/v1/sites", opts)
+    Client.stream(client, "#{prefix(client)}/v1/sites", opts)
   end
 
   @doc """
@@ -66,7 +89,8 @@ defmodule UnifiApi.Network.Sites do
       # When you only care about the id:
       {:ok, %{"id" => site_id}} = UnifiApi.Network.Sites.find_by_name(client, "HQ")
   """
-  @spec find_by_name(Req.Request.t(), String.t()) :: {:ok, map()} | {:error, term()}
+  @spec find_by_name(Req.Request.t(), String.t()) ::
+          {:ok, map()} | {:error, :not_found | UnifiApi.Error.t()}
   def find_by_name(client, name) when is_binary(name) do
     find_by(client, "name", name)
   end
@@ -76,7 +100,7 @@ defmodule UnifiApi.Network.Sites do
   field — the controller's internal slug, e.g. `"default"`.
   """
   @spec find_by_internal_reference(Req.Request.t(), String.t()) ::
-          {:ok, map()} | {:error, term()}
+          {:ok, map()} | {:error, :not_found | UnifiApi.Error.t()}
   def find_by_internal_reference(client, ref) when is_binary(ref) do
     find_by(client, "internalReference", ref)
   end
@@ -89,6 +113,4 @@ defmodule UnifiApi.Network.Sites do
       end
     end
   end
-
-  defp prefix, do: Client.network_prefix()
 end

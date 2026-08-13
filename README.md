@@ -14,10 +14,30 @@ Add `unifi_api` to your list of dependencies in `mix.exs`:
 ```elixir
 def deps do
   [
-    {:unifi_api, "~> 0.3.0"}
+    {:unifi_api, "~> 0.4.0"}
   ]
 end
 ```
+
+`unifi_api` is a library and ships **no Application callback** — it does
+not start a supervision tree of its own. Consumers that need the
+auto-rotating cookie/CSRF session (`UnifiApi.Auth.Session`) add it to
+their own supervision tree:
+
+```elixir
+children = [
+  {UnifiApi.Auth.Session,
+   name: MyApp.UnifiSession,
+   client: UnifiApi.new(base_url: "https://192.168.1.1", api_key: "..."),
+   relogin: fn -> UnifiApi.Auth.Cookie.login(...) end,
+   style: :udm}
+]
+
+Supervisor.start_link(children, strategy: :one_for_one)
+```
+
+Stateless one-shot scripts don't need any supervision — just call
+`UnifiApi.Auth.Cookie.login/4` directly (see "Operational Data").
 
 ## Configuration
 
@@ -28,7 +48,10 @@ end
 config :unifi_api,
   base_url: "https://192.168.1.1",
   api_key: "your-api-key",
-  verify_ssl: false,
+  # Secure by default (CWE-295 / OWASP A02). Set to `false` only for
+  # self-signed controllers on a trusted network, or pin the leaf cert
+  # with `cert_fingerprints` — see "Self-Signed Certificates".
+  verify_ssl: true,
   # UDM defaults — for Cloud Key, set both to "/integration"
   network_path: "/proxy/network/integration",
   protect_path: "/proxy/protect/integration"
@@ -41,27 +64,58 @@ config :unifi_api,
 config :unifi_api,
   base_url: System.get_env("UNIFI_BASE_URL", "https://192.168.1.1"),
   api_key: System.get_env("UNIFI_API_KEY", ""),
-  verify_ssl: System.get_env("UNIFI_VERIFY_SSL", "false") == "true",
+  # `verify_ssl: true` by default (secure-by-default). To disable:
+  #   - set `UNIFI_VERIFY_SSL=false`, or
+  #   - set the last-resort escape hatch `UNIFI_INSECURE_TLS=1`.
+  # Both are insecure; prefer `cert_fingerprints` for self-signed controllers.
+  verify_ssl: System.get_env("UNIFI_VERIFY_SSL", "true") == "true" and
+              System.get_env("UNIFI_INSECURE_TLS", "0") not in ["1", "true"],
   network_path: System.get_env("UNIFI_NETWORK_PATH", "/proxy/network/integration"),
   protect_path: System.get_env("UNIFI_PROTECT_PATH", "/proxy/protect/integration")
 ```
 
 ### Path prefixes
 
-On **UDM / UDM Pro / UDM SE** (UniFi OS), the API runs behind a reverse proxy:
+The four API path prefixes are resolved once when the client is built and
+carried on the client struct, so clients for different controller flavours
+coexist in the same VM.
 
-| API | Default path | Env var |
-|-----|-------------|---------|
-| Network | `/proxy/network/integration` | `UNIFI_NETWORK_PATH` |
-| Protect | `/proxy/protect/integration` | `UNIFI_PROTECT_PATH` |
+On **UDM / UDM Pro / UDM SE** (UniFi OS) the APIs run behind a reverse proxy;
+on **Cloud Key** and standalone controllers they sit at the root. Pick the
+flavour with `:style`:
 
-On **Cloud Key** or standalone controllers, set both to `"/integration"`:
+```elixir
+udm = UnifiApi.new(base_url: udm_url, api_key: k1, style: :udm)          # default
+cloud_key = UnifiApi.new(base_url: ck_url, api_key: k2, style: :cloud_key)
+```
+
+| API | `:udm` (default) | `:cloud_key` | Override option | Env var |
+|-----|------------------|--------------|-----------------|---------|
+| Network | `/proxy/network/integration` | `/integration` | `:network_path` | `UNIFI_NETWORK_PATH` |
+| Protect | `/proxy/protect/integration` | `/integration` | `:protect_path` | `UNIFI_PROTECT_PATH` |
+| Network v1 (cookie auth) | `/proxy/network` | `""` | `:v1_path` | `UNIFI_V1_PATH` |
+| Protect v1 (cookie auth) | `/proxy/protect` | `/protect` | `:protect_v1_path` | — |
+
+Not sure which flavour you have? `UnifiApi.detect/1` probes the controller and
+its `:style` feeds straight back into `new/1`:
+
+```elixir
+{:ok, info} = UnifiApi.detect(UnifiApi.new(base_url: url))
+client = UnifiApi.new(base_url: url, api_key: key, style: info.style)
+```
+
+Setting the paths in application config still works and is honoured when no
+`:style` is given, but it is global — it cannot describe two controllers at
+once:
 
 ```elixir
 config :unifi_api,
   network_path: "/integration",
   protect_path: "/integration"
 ```
+
+Resolution order, highest first: an explicit `:network_path` (etc.) option,
+the `:style` preset, the application env key, then the `:udm` default.
 
 ### Runtime override
 
@@ -71,7 +125,30 @@ Pass options directly when creating a client to override application config:
 client = UnifiApi.new(
   base_url: "https://192.168.0.1",
   api_key: "my-api-key",
-  verify_ssl: false
+  # verify_ssl: true is the default; only set false with a self-signed
+  # controller on a trusted network, or use cert_fingerprints.
+  cert_fingerprints: ["sha256:AB:CD:EF:..."]
+)
+```
+
+### Timeouts, retries, and pools
+
+All optional, with production-safe defaults:
+
+| Option | Default | Notes |
+|--------|---------|-------|
+| `:connect_timeout` | `5_000` | TCP/TLS connect. Mint's own default is 30s, which makes a black-holed controller IP block ~61s per call. Also `config :unifi_api, connect_timeout: ms`. |
+| `:receive_timeout` | `30_000` | Time to first response. |
+| `:pool_timeout` | `5_000` | Connection checkout. |
+| `:max_retries` | `1` | Retries transient failures on GET/HEAD only. A server-supplied `Retry-After` is honoured but clamped to 300s. |
+| `:finch` | — | Name of a Finch pool you started yourself. Mutually exclusive with the TLS and connect-timeout options, which then belong on your pool; combining them raises instead of silently dropping your transport settings. |
+
+```elixir
+client = UnifiApi.new(
+  base_url: "https://192.168.0.1",
+  api_key: "my-api-key",
+  connect_timeout: 2_000,
+  receive_timeout: 10_000
 )
 ```
 
@@ -414,7 +491,8 @@ require **cookie + CSRF authentication** rather than `x-api-key`.
 
 ```elixir
 # Build an unauthenticated client, then log in.
-client = UnifiApi.new(base_url: "https://192.168.1.1", verify_ssl: false)
+client = UnifiApi.new(base_url: "https://192.168.1.1",
+  cert_fingerprints: ["sha256:AB:CD:EF:..."])
 
 {:ok, authed} = UnifiApi.Auth.Cookie.login(client, "admin", "password",
   style: :udm  # or :cloud_key
@@ -428,9 +506,9 @@ If you're not sure which style your controller uses, probe it first:
 {:ok, authed} = UnifiApi.Auth.Cookie.login(client, user, pass, style: info.style)
 ```
 
-For Cloud Key controllers, also set
-`Application.put_env(:unifi_api, :v1_path, "")` (default is
-`/proxy/network` for UDM).
+For Cloud Key controllers pass `style: :cloud_key` when building the client,
+which sets the v1 prefix to `""` (the UDM default is `/proxy/network`). See
+"Path prefixes".
 
 ### Authenticate (long-running app)
 
@@ -442,18 +520,32 @@ the cookie + CSRF state and auto-rotates the token from response
 headers:
 
 ```elixir
+# Fingerprints for the controller's self-signed cert, comma-separated.
+fingerprints =
+  System.get_env("UNIFI_CERT_FINGERPRINTS", "") |> String.split(",", trim: true)
+
+base = UnifiApi.new(base_url: "https://192.168.1.1", cert_fingerprints: fingerprints)
+
 children = [
   {UnifiApi.Auth.Session,
    name: MyApp.UnifiSession,
-   client: UnifiApi.new(base_url: "https://192.168.1.1", verify_ssl: false),
-   username: System.fetch_env!("UNIFI_USERNAME"),
-   password: System.fetch_env!("UNIFI_PASSWORD"),
+   client: base,
+   # Preferred over :username / :password (CWE-522): the session calls this
+   # only when a fresh login is needed and never holds the plaintext itself.
+   relogin: fn ->
+     UnifiApi.Auth.Cookie.login(
+       base,
+       System.fetch_env!("UNIFI_USERNAME"),
+       System.fetch_env!("UNIFI_PASSWORD"),
+       style: :udm
+     )
+   end,
    style: :udm}
 ]
 
 Supervisor.start_link(children, strategy: :one_for_one)
 
-# Anywhere in your app:
+# Anywhere in your app — a lock-free read, no call into the GenServer:
 authed = UnifiApi.Auth.Session.client(MyApp.UnifiSession)
 {:ok, events} = UnifiApi.Network.Events.list(authed, "default")
 ```
@@ -542,7 +634,7 @@ named
 
 > **Note:** v1 / v2 endpoint shapes are documented from community
 > sources (primarily `unpoller/unpoller`). They have not been exercised
-> end-to-end against live UDM Pro / Cloud Key hardware in v0.3.0. Please
+> end-to-end against live UDM Pro / Cloud Key hardware in v0.4.0. Please
 > file an issue with controller model and firmware version if anything
 > looks off — most fixes will be one-line tweaks.
 
@@ -1044,8 +1136,8 @@ colour a column based on its cell value:
 
 All functions return `{:ok, body}` on success or `{:error, reason}` on failure.
 
-Auth and rate-limit errors are surfaced as exception structs so callers can
-pattern-match without inspecting the status code:
+Every error is one of five exception structs, together forming the
+`UnifiApi.Error.t()` umbrella, so an exhaustive `case` is possible:
 
 ```elixir
 case UnifiApi.Network.Devices.get(client, site_id, "bad-id") do
@@ -1062,27 +1154,44 @@ case UnifiApi.Network.Devices.get(client, site_id, "bad-id") do
     Process.sleep(seconds * 1000)
     retry()
 
-  {:error, {404, body}} ->
-    IO.puts("Not found: #{inspect(body)}")
+  {:error, %UnifiApi.ApiError{status: 404}} ->
+    IO.puts("Not found")
 
-  {:error, {status, body}} ->
-    IO.puts("HTTP #{status}: #{inspect(body)}")
+  {:error, %UnifiApi.ApiError{code: code}} when is_binary(code) ->
+    # Legacy v1 endpoints answer 200 with the failure in the body.
+    IO.puts("Controller error: #{code}")
 
-  {:error, reason} ->
+  {:error, %UnifiApi.ApiError{status: status, body_preview: preview}} ->
+    IO.puts("HTTP #{status}: #{preview}")
+
+  {:error, %UnifiApi.TransportError{reason: reason}} ->
     IO.puts("Transport error: #{inspect(reason)}")
 end
 ```
 
-Other non-2xx responses are returned as `{:error, {status, body}}` tuples.
+| Struct | When |
+|--------|------|
+| `UnifiApi.AuthError` | 401 / 403 |
+| `UnifiApi.RateLimitError` | 429, with a parsed and clamped `Retry-After` |
+| `UnifiApi.ApiError` | any other non-2xx, **or** a legacy v1 envelope error (HTTP 200 with `code` set) |
+| `UnifiApi.TransportError` | no HTTP response at all — refused, DNS, TLS, timeout. The underlying `Req` exception is kept in `:original` |
+| `UnifiApi.StreamError` | mid-stream failure, from the `stream/*` functions only |
+
+Raw response bodies are never retained. Each struct carries a
+`:body_preview` — scrubbed of URLs and hostnames, truncated to 128
+characters — so an error reaching a log or an exception tracker cannot leak
+the response (CWE-209 / OWASP A09).
+
+A couple of functions return a documented plain atom for a non-failure
+outcome: `Sites.find_by_name/2` gives `{:error, :not_found}` and
+`Cookie.logout/2` gives `{:error, :not_logged_in}`.
 
 ### Upgrading from a previous version
 
 See [UPGRADING.md](UPGRADING.md) for breaking-change details and concrete
-before/after examples. The headline change in 0.3.0: 401, 403, and 429
-responses now return `%UnifiApi.AuthError{}` and `%UnifiApi.RateLimitError{}`
-structs instead of `{:error, {status, body}}` tuples. Catch-all
-`{:error, _}` matches still work; only callers that pattern-matched the
-specific status codes need to update.
+before/after examples. v0.4.0 is a breaking release: the error umbrella
+above replaces ten ad-hoc shapes, path prefixes moved onto the client, and
+certificate pinning — which never actually worked — is now enforced.
 
 ## Multiple Controllers
 
@@ -1111,30 +1220,36 @@ controllers
 |> Enum.to_list()
 ```
 
-If the controllers use different path conventions (UDM vs Cloud Key),
-hold per-controller paths alongside the client and apply them as needed:
+If the controllers use different path conventions (UDM vs Cloud Key), say so
+per client. Each client carries its own prefixes:
 
 ```elixir
 defmodule MyApp.Controllers do
   @controllers %{
-    hq:     %{client: UnifiApi.new(base_url: "https://10.0.0.1",   api_key: System.fetch_env!("HQ_KEY")),
-              v1: "/proxy/network", network: "/proxy/network/integration"},
-    branch: %{client: UnifiApi.new(base_url: "https://10.1.0.1",   api_key: System.fetch_env!("BRANCH_KEY")),
-              v1: "",               network: "/integration"}
+    hq:
+      UnifiApi.new(
+        base_url: "https://10.0.0.1",
+        api_key: System.fetch_env!("HQ_KEY"),
+        style: :udm
+      ),
+    branch:
+      UnifiApi.new(
+        base_url: "https://10.1.0.1",
+        api_key: System.fetch_env!("BRANCH_KEY"),
+        style: :cloud_key
+      )
   }
 
-  def call(name, fun) do
-    %{client: client, v1: v1, network: network} = @controllers[name]
-    Application.put_env(:unifi_api, :v1_path, v1)
-    Application.put_env(:unifi_api, :network_path, network)
-    fun.(client)
-  end
+  def call(name, fun), do: fun.(@controllers[name])
 end
 
 MyApp.Controllers.call(:branch, fn client ->
   UnifiApi.Network.Sites.list(client)
 end)
 ```
+
+Before v0.4.0 this needed `Application.put_env/3` around every call, which
+could not describe two flavours at once and raced any concurrent request.
 
 For long-running pollers that need cookie-authenticated v1 access on
 multiple controllers, log in once per controller at startup and reuse
@@ -1143,20 +1258,17 @@ can refresh the CSRF token without a full re-login.
 
 ## Self-Signed Certificates
 
-UDM and Cloud Key controllers use self-signed TLS certificates by default.
-You have three options:
+UDM and Cloud Key controllers ship self-signed TLS certificates by default.
+As of **v0.4.0**, `unifi_api` is **secure-by-default**: TLS verification is
+on (`verify_ssl: true`) unless you explicitly opt out. This closes CWE-295
+/ OWASP A02 — previously the `x-api-key`, session cookie, and (cookie-auth
+flow) controller username/password all round-tripped over an unverified
+connection, exposing every credential to MITM.
 
-### 1. No verification (default — easy, weakest)
+For self-signed controllers you have three options — **pick fingerprint
+pinning or a trusted CA, not "no verification"**:
 
-```elixir
-client = UnifiApi.new(verify_ssl: false)  # default
-```
-
-The connection is encrypted but unauthenticated. Anyone on the network path
-between you and the controller could intercept traffic without detection.
-Fine for local trusted networks; **don't ship this to production**.
-
-### 2. Fingerprint pinning (recommended for self-signed setups)
+### 1. Fingerprint pinning (recommended for self-signed setups)
 
 ```elixir
 client = UnifiApi.new(
@@ -1166,10 +1278,31 @@ client = UnifiApi.new(
 )
 ```
 
-The TLS handshake is rejected unless the controller's leaf certificate
-matches one of the configured SHA-256 fingerprints. This pins the
-connection to the specific physical device — much stronger than
-`verify_ssl: false` without requiring a CA.
+The TLS handshake is rejected unless the certificate the controller presents
+matches one of the configured SHA-256 fingerprints. This pins the connection
+to the specific physical device — much stronger than `verify_ssl: false` and
+without requiring a CA.
+
+> **Fixed in v0.4.0.** In v0.3.0 this feature did not work and did not
+> protect you: the option set was rejected by `:ssl` on every pinned
+> connection, and the verification callback accepted *any* self-signed
+> certificate regardless of its fingerprint. See
+> [UPGRADING.md](UPGRADING.md#security-notice-certificate-pinning).
+
+Pin the certificate the controller cannot prove:
+
+  * **Self-signed controller** (the UniFi default) — pin its own certificate.
+    This is the normal case.
+  * **Controller behind a private CA** — pin the **CA** certificate. Pinning a
+    leaf whose issuer cannot be verified is rejected, because accepting it
+    would mean deferring the decision to a callback that may never arrive.
+    Installing the CA at the OS level and using `verify_ssl: true` also works.
+
+A pinned certificate is not additionally hostname-checked: a SHA-256 pin
+names one exact certificate and is strictly stronger than a name match, and
+UniFi controllers are routinely reached by IP with a certificate whose
+CN/SAN does not cover it. Trust *inherited* from a pinned CA **is**
+hostname-checked.
 
 Get the fingerprint with `openssl`:
 
@@ -1188,14 +1321,29 @@ cert_fingerprints: ["abcdef01..."]                # plain 64-char hex
 cert_fingerprints: ["fp1...", "fp2..."]           # multiple (e.g. cert rotation)
 ```
 
-### 3. Real CA verification
+### 2. Real CA verification
 
 ```elixir
-client = UnifiApi.new(verify_ssl: true)
+client = UnifiApi.new(verify_ssl: true)  # default as of v0.4.0
 ```
 
 Use this if you've installed your own CA on the controller and trusted it
-at the OS level. The strongest option, but rarely how UniFi gear is run.
+at the OS level. The strongest option, and the default behaviour.
+
+### 3. No verification (last-resort escape hatch — insecure)
+
+```elixir
+# Per-client opt-out:
+client = UnifiApi.new(base_url: "https://192.168.1.1", api_key: "abc", verify_ssl: false)
+
+# Or globally via env var (config/runtime.exs reads this):
+#   UNIFI_INSECURE_TLS=1
+```
+
+The connection is encrypted but unauthenticated. Anyone on the network path
+between you and the controller can intercept traffic — including the
+`x-api-key` and cookie-auth credentials — without detection. Fine for a
+throwaway script on a trusted LAN; **don't ship this to production**.
 
 ## Generating Docs
 

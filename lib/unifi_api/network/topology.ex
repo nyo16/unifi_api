@@ -23,7 +23,7 @@ defmodule UnifiApi.Network.Topology do
   > shapes track the v2 schema and may shift across firmware revisions.
   """
 
-  alias UnifiApi.Client
+  use UnifiApi.Resource, api: :network_v1
 
   @doc """
   Returns the site topology graph.
@@ -39,10 +39,8 @@ defmodule UnifiApi.Network.Topology do
       nodes
       |> Enum.group_by(& &1["parent"])
   """
-  @spec get(Req.Request.t(), String.t()) :: {:ok, term()} | {:error, term()}
+  @spec get(Req.Request.t(), String.t()) :: {:ok, term()} | {:error, UnifiApi.Error.t()}
   def get(client, site_id) do
-    Client.get_v1(client, "#{prefix()}/v2/api/site/#{site_id}/topology")
+    Client.get_v1(client, "#{prefix(client)}/v2/api/site/#{id!(site_id)}/topology")
   end
-
-  defp prefix, do: Client.v1_prefix()
 end

@@ -2,6 +2,7 @@ defmodule UnifiApi.Auth.CookieTest do
   use ExUnit.Case, async: true
 
   alias UnifiApi.Auth.Cookie
+  alias UnifiApi.ApiError
   alias UnifiApi.AuthError
 
   defp test_client(plug) do
@@ -109,7 +110,7 @@ defmodule UnifiApi.Auth.CookieTest do
                Cookie.login(client, "u", "p")
     end
 
-    test "500 returns generic {:error, {status, body}}" do
+    test "500 returns %ApiError{} with the status and a scrubbed body preview" do
       client =
         test_client(fn conn ->
           conn
@@ -117,11 +118,15 @@ defmodule UnifiApi.Auth.CookieTest do
           |> Plug.Conn.send_resp(500, JSON.encode!(%{"error" => "boom"}))
         end)
 
-      assert {:error, {500, %{"error" => "boom"}}} = Cookie.login(client, "u", "p")
+      assert {:error, %ApiError{status: 500, code: nil, body_preview: preview}} =
+               Cookie.login(client, "u", "p")
+
+      # Body is scrubbed/truncated into a preview string, never the raw map.
+      assert preview =~ "boom"
     end
   end
 
-  describe "refresh_csrf/2" do
+  describe "refresh_csrf/1" do
     test "captures rotated CSRF from probe response" do
       client =
         test_client(fn conn ->
@@ -169,6 +174,31 @@ defmodule UnifiApi.Auth.CookieTest do
         end)
 
       assert :ok = Cookie.logout(client, style: :cloud_key)
+    end
+
+    test "returns {:error, :not_logged_in} for 401" do
+      client = test_client(fn conn -> Plug.Conn.send_resp(conn, 401, "") end)
+      assert {:error, :not_logged_in} = Cookie.logout(client)
+    end
+
+    test "returns {:error, :not_logged_in} for 403" do
+      client = test_client(fn conn -> Plug.Conn.send_resp(conn, 403, "") end)
+      assert {:error, :not_logged_in} = Cookie.logout(client)
+    end
+
+    test "returns %ApiError{} for 500" do
+      client =
+        test_client(fn conn ->
+          conn
+          |> Plug.Conn.put_resp_content_type("application/json")
+          |> Plug.Conn.send_resp(500, JSON.encode!(%{"error" => "boom"}))
+        end)
+
+      assert {:error, %ApiError{status: 500, code: nil, body_preview: preview}} =
+               Cookie.logout(client)
+
+      # Body is scrubbed/truncated into a preview string, never the raw map.
+      assert preview =~ "boom"
     end
   end
 end

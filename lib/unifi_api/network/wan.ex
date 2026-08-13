@@ -15,42 +15,51 @@ defmodule UnifiApi.Network.WAN do
     * `slas/2` — Internet SLA monitoring history.
   """
 
-  alias UnifiApi.Client
+  use UnifiApi.Resource, api: :network_v1
 
   @doc """
   Returns the enriched WAN configuration: per-WAN type, identifiers,
   and derived state.
   """
-  @spec enriched_config(Req.Request.t(), String.t()) :: {:ok, term()} | {:error, term()}
+  @spec enriched_config(Req.Request.t(), String.t()) ::
+          {:ok, term()} | {:error, UnifiApi.Error.t()}
   def enriched_config(client, site_id) do
-    Client.get_v1(client, "#{prefix()}/v2/api/site/#{site_id}/wan/enriched-configuration")
+    Client.get_v1(
+      client,
+      "#{prefix(client)}/v2/api/site/#{id!(site_id)}/wan/enriched-configuration"
+    )
   end
 
   @doc """
   Returns ISP reachability and latency status for a specific WAN.
   """
   @spec isp_status(Req.Request.t(), String.t(), String.t()) ::
-          {:ok, term()} | {:error, term()}
+          {:ok, term()} | {:error, UnifiApi.Error.t()}
   def isp_status(client, site_id, wan_id) do
-    Client.get_v1(client, "#{prefix()}/v2/api/site/#{site_id}/wan/#{wan_id}/isp-status")
+    Client.get_v1(
+      client,
+      "#{prefix(client)}/v2/api/site/#{id!(site_id)}/wan/#{id!(wan_id)}/isp-status"
+    )
   end
 
   @doc """
   Returns the multi-WAN load-balancing configuration and current
   per-WAN weights.
   """
-  @spec load_balancing(Req.Request.t(), String.t()) :: {:ok, term()} | {:error, term()}
+  @spec load_balancing(Req.Request.t(), String.t()) ::
+          {:ok, term()} | {:error, UnifiApi.Error.t()}
   def load_balancing(client, site_id) do
-    Client.get_v1(client, "#{prefix()}/v2/api/site/#{site_id}/wan/load-balancing")
+    Client.get_v1(
+      client,
+      "#{prefix(client)}/v2/api/site/#{id!(site_id)}/wan/load-balancing"
+    )
   end
 
   @doc """
   Returns SLA monitoring data for the site's WAN connections.
   """
-  @spec slas(Req.Request.t(), String.t()) :: {:ok, term()} | {:error, term()}
+  @spec slas(Req.Request.t(), String.t()) :: {:ok, term()} | {:error, UnifiApi.Error.t()}
   def slas(client, site_id) do
-    Client.get_v1(client, "#{prefix()}/v2/api/site/#{site_id}/wan-slas")
+    Client.get_v1(client, "#{prefix(client)}/v2/api/site/#{id!(site_id)}/wan-slas")
   end
-
-  defp prefix, do: Client.v1_prefix()
 end

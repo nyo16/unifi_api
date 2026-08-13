@@ -10,12 +10,16 @@ defmodule UnifiApi.Protect.NVR do
     * `doorbellSettings` — `%{defaultMessageText, defaultMessageResetTimeoutMs, customMessages, customImages}`
   """
 
-  alias UnifiApi.Client
-
-  defp prefix, do: Client.protect_prefix()
+  use UnifiApi.Resource, api: :protect
 
   @doc """
   Gets NVR information.
+
+  ## Options
+
+    * `:raw` — when `true`, return the raw response body binary
+      (skips JSON decoding). Useful on heavy NVR responses that the
+      caller wants to stream-parse.
 
   ## Examples
 
@@ -23,8 +27,8 @@ defmodule UnifiApi.Protect.NVR do
       nvr["name"]             # => "UNVR"
       nvr["doorbellSettings"] # => %{"defaultMessageText" => "Welcome", ...}
   """
-  @spec get(Req.Request.t()) :: {:ok, term()} | {:error, term()}
-  def get(client) do
-    Client.get(client, "#{prefix()}/v1/nvrs")
+  @spec get(Req.Request.t(), keyword()) :: {:ok, term()} | {:error, UnifiApi.Error.t()}
+  def get(client, opts \\ []) do
+    Client.get(client, "#{prefix(client)}/v1/nvrs", opts)
   end
 end

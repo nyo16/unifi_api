@@ -5,7 +5,7 @@ defmodule UnifiApi.Network.Info do
   Retrieves controller version and system details.
   """
 
-  alias UnifiApi.Client
+  use UnifiApi.Resource, api: :network
 
   @doc """
   Returns system information including the application version.
@@ -16,10 +16,8 @@ defmodule UnifiApi.Network.Info do
       info["applicationVersion"]
       # => "10.1.84"
   """
-  @spec get_info(Req.Request.t()) :: {:ok, term()} | {:error, term()}
+  @spec get_info(Req.Request.t()) :: {:ok, term()} | {:error, UnifiApi.Error.t()}
   def get_info(client) do
-    Client.get(client, "#{prefix()}/v1/info")
+    Client.get(client, "#{prefix(client)}/v1/info")
   end
-
-  defp prefix, do: Client.network_prefix()
 end

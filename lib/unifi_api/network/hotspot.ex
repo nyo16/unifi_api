@@ -13,7 +13,7 @@ defmodule UnifiApi.Network.Hotspot do
     * `rxRateLimitKbps`, `txRateLimitKbps`
   """
 
-  alias UnifiApi.Client
+  use UnifiApi.Resource, api: :network
 
   @doc """
   Lists all hotspot vouchers on a site.
@@ -26,9 +26,14 @@ defmodule UnifiApi.Network.Hotspot do
 
       {:ok, vouchers} = UnifiApi.Network.Hotspot.list_vouchers(client, site_id)
   """
-  @spec list_vouchers(Req.Request.t(), String.t(), keyword()) :: {:ok, term()} | {:error, term()}
+  @spec list_vouchers(Req.Request.t(), String.t(), keyword()) ::
+          {:ok, term()} | {:error, UnifiApi.Error.t()}
   def list_vouchers(client, site_id, opts \\ []) do
-    Client.get(client, "#{prefix()}/v1/sites/#{site_id}/hotspot/vouchers", opts)
+    Client.get(
+      client,
+      "#{prefix(client)}/v1/sites/#{id!(site_id)}/hotspot/vouchers",
+      opts
+    )
   end
 
   @doc """
@@ -40,9 +45,13 @@ defmodule UnifiApi.Network.Hotspot do
       voucher["code"]    # => "12345-67890"
       voucher["expired"] # => false
   """
-  @spec get_voucher(Req.Request.t(), String.t(), String.t()) :: {:ok, term()} | {:error, term()}
+  @spec get_voucher(Req.Request.t(), String.t(), String.t()) ::
+          {:ok, term()} | {:error, UnifiApi.Error.t()}
   def get_voucher(client, site_id, voucher_id) do
-    Client.get(client, "#{prefix()}/v1/sites/#{site_id}/hotspot/vouchers/#{voucher_id}")
+    Client.get(
+      client,
+      "#{prefix(client)}/v1/sites/#{id!(site_id)}/hotspot/vouchers/#{id!(voucher_id)}"
+    )
   end
 
   @doc """
@@ -70,9 +79,14 @@ defmodule UnifiApi.Network.Hotspot do
         txRateLimitKbps: 1000
       })
   """
-  @spec create_vouchers(Req.Request.t(), String.t(), map()) :: {:ok, term()} | {:error, term()}
+  @spec create_vouchers(Req.Request.t(), String.t(), map()) ::
+          {:ok, term()} | {:error, UnifiApi.Error.t()}
   def create_vouchers(client, site_id, body) do
-    Client.post(client, "#{prefix()}/v1/sites/#{site_id}/hotspot/vouchers", body)
+    Client.post(
+      client,
+      "#{prefix(client)}/v1/sites/#{id!(site_id)}/hotspot/vouchers",
+      body
+    )
   end
 
   @doc """
@@ -82,9 +96,10 @@ defmodule UnifiApi.Network.Hotspot do
 
       {:ok, _} = UnifiApi.Network.Hotspot.delete_vouchers(client, site_id)
   """
-  @spec delete_vouchers(Req.Request.t(), String.t()) :: {:ok, term()} | {:error, term()}
+  @spec delete_vouchers(Req.Request.t(), String.t()) ::
+          {:ok, term()} | {:error, UnifiApi.Error.t()}
   def delete_vouchers(client, site_id) do
-    Client.delete(client, "#{prefix()}/v1/sites/#{site_id}/hotspot/vouchers")
+    Client.delete(client, "#{prefix(client)}/v1/sites/#{id!(site_id)}/hotspot/vouchers")
   end
 
   @doc """
@@ -95,25 +110,53 @@ defmodule UnifiApi.Network.Hotspot do
       {:ok, _} = UnifiApi.Network.Hotspot.delete_voucher(client, site_id, voucher_id)
   """
   @spec delete_voucher(Req.Request.t(), String.t(), String.t()) ::
-          {:ok, term()} | {:error, term()}
+          {:ok, term()} | {:error, UnifiApi.Error.t()}
   def delete_voucher(client, site_id, voucher_id) do
-    Client.delete(client, "#{prefix()}/v1/sites/#{site_id}/hotspot/vouchers/#{voucher_id}")
+    Client.delete(
+      client,
+      "#{prefix(client)}/v1/sites/#{id!(site_id)}/hotspot/vouchers/#{id!(voucher_id)}"
+    )
   end
 
   @doc """
   Returns a lazy stream that auto-paginates through all vouchers.
 
+  ## Error contract
+
+  A mid-stream error does **not** raise by default: the stream halts and
+  yields `{:error, %UnifiApi.StreamError{}, last_offset}` as its final
+  element, so the enumerable is heterogeneous. Match the tail:
+
+      case Enum.to_list(stream) do
+        items when is_list(items) ->
+          case List.last(items) do
+            {:error, error, cursor} -> {:error, error, cursor}
+            _ -> {:ok, items}
+          end
+      end
+
+  Pass `raise_errors: true` to raise `UnifiApi.StreamError` instead.
+
+  ## Options
+
+    * `:max_pages` — halt after this many successful pages (default: unbounded).
+    * `:max_items` — halt once this many items have been yielded (default: unbounded).
+    * `:raise_errors` — raise `UnifiApi.StreamError` on error instead of
+      yielding the error tuple (default: `false`).
+
   ## Examples
 
       # Get all active voucher codes
-      UnifiApi.Network.Hotspot.stream_vouchers(client, site_id)
+      UnifiApi.Network.Hotspot.stream_vouchers(client, site_id, raise_errors: true)
       |> Stream.reject(& &1["expired"])
       |> Enum.map(& &1["code"])
   """
   @spec stream_vouchers(Req.Request.t(), String.t(), keyword()) :: Enumerable.t()
   def stream_vouchers(client, site_id, opts \\ []) do
-    Client.stream(client, "#{prefix()}/v1/sites/#{site_id}/hotspot/vouchers", opts)
+    Client.stream(
+      client,
+      "#{prefix(client)}/v1/sites/#{id!(site_id)}/hotspot/vouchers",
+      opts
+    )
   end
-
-  defp prefix, do: Client.network_prefix()
 end

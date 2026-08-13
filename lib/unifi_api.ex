@@ -24,7 +24,8 @@ defmodule UnifiApi do
       config :unifi_api,
         base_url: "https://192.168.0.1",
         api_key: "your-api-key",
-        verify_ssl: false,
+        # verify_ssl: true is the default (secure-by-default since v0.4.0);
+        # use cert_fingerprints for self-signed controllers.
         network_path: "/proxy/network/integration",
         protect_path: "/proxy/protect/integration"
 
@@ -38,21 +39,37 @@ defmodule UnifiApi do
   @doc """
   Creates a new API client.
 
-  A single client works for both Network and Protect APIs — the path
-  prefix is resolved per-module from application config.
+  A single client works for both Network and Protect APIs. The four path
+  prefixes are resolved once, here, and carried on the client struct, so a
+  UDM client and a Cloud Key client can coexist in the same VM.
 
   ## Options
 
     * `:base_url` — UniFi controller URL (e.g. `"https://192.168.0.1"`)
     * `:api_key` — API key for authentication
     * `:verify_ssl` — whether to verify SSL certificates against the OS CA
-      store (default: `false`). Ignored when `:cert_fingerprints` is set.
+      store (default: `true` since v0.4.0, secure-by-default per CWE-295 /
+      OWASP A02). Set to `false` only for self-signed controllers on a
+      trusted network, or pin the leaf cert with `:cert_fingerprints`.
+      Ignored when `:cert_fingerprints` is set.
     * `:cert_fingerprints` — list of SHA-256 fingerprints of acceptable
       peer certificates. When set, the connection is verified by pinning
       the leaf certificate to one of these fingerprints; CA validation is
       skipped. Each entry is a hex string, optionally prefixed with
       `"sha256:"` and/or separated by colons. Example:
       `["sha256:AB:CD:..."]` or `["abcd...32-byte-hex..."]`.
+    * `:style` — `:udm` (default) or `:cloud_key`. Selects the default path
+      prefixes for the whole client. Use `detect/1` if you do not know which
+      flavour you are talking to.
+    * `:network_path` / `:protect_path` / `:v1_path` / `:protect_v1_path` —
+      override an individual prefix, taking precedence over `:style`.
+    * `:connect_timeout` — TCP/TLS connect timeout in ms (default 5_000).
+    * `:receive_timeout` — response timeout in ms (default 30_000).
+    * `:pool_timeout` — checkout timeout in ms (default 5_000).
+    * `:max_retries` — retry attempts for transient failures (default 1).
+    * `:finch` — the name of a Finch pool you started yourself. Mutually
+      exclusive with the TLS and connect-timeout options above, which then
+      belong on your own pool.
 
   ## Examples
 
@@ -69,24 +86,37 @@ defmodule UnifiApi do
         cert_fingerprints: ["sha256:AB:CD:EF:..."]
       )
 
+      # Two controller flavours at once — impossible before v0.4.0, when the
+      # prefixes lived in global application config.
+      udm = UnifiApi.new(base_url: "https://192.168.0.1", api_key: k1, style: :udm)
+      ck = UnifiApi.new(base_url: "https://192.168.0.9", api_key: k2, style: :cloud_key)
+
       # Same client works for both APIs
-      UnifiApi.Network.Sites.list(client)
-      UnifiApi.Protect.Cameras.list(client)
+      UnifiApi.Network.Sites.list(udm)
+      UnifiApi.Protect.Cameras.list(udm)
   """
   @spec new() :: Req.Request.t()
   @spec new(keyword()) :: Req.Request.t()
   defdelegate new(opts \\ []), to: UnifiApi.Client
 
   @typedoc """
-  Result of `detect/1`. The string fields are absolute path prefixes you can
-  use directly with `Application.put_env(:unifi_api, ..., ...)` or with the
-  per-call routing in `UnifiApi.Auth.Cookie.login/4`.
+  Result of `detect/1`.
+
+  Feed `:style` straight back into `UnifiApi.new/1` to apply everything the
+  probe learned:
+
+      {:ok, info} = UnifiApi.detect(UnifiApi.new(base_url: url))
+      client = UnifiApi.new(base_url: url, api_key: key, style: info.style)
+
+  The prefix fields are the same values `new/1` would resolve for that style,
+  exposed for callers that route paths themselves.
   """
   @type controller_info :: %{
-          style: :udm | :cloud_key,
+          style: UnifiApi.Client.style(),
           network_prefix: String.t(),
           protect_prefix: String.t(),
           v1_prefix: String.t(),
+          protect_v1_prefix: String.t(),
           auth_path: String.t()
         }
 
@@ -104,39 +134,62 @@ defmodule UnifiApi do
       Protect live at the root, and login is at `/api/login`.
 
   This heuristic is the same one unpoller uses against tens of thousands
-  of deployments, but it is **not** infallible — set the prefixes
-  manually via application config if `detect/1` mis-identifies your
-  controller.
+  of deployments, but it is **not** infallible — pass `:style` (or an
+  individual `:network_path` / `:protect_path` / `:v1_path` /
+  `:protect_v1_path`) to `new/1` if `detect/1` mis-identifies your controller.
 
   ## Examples
 
-      client = UnifiApi.new(base_url: "https://192.168.1.1", verify_ssl: false)
+      probe = UnifiApi.new(base_url: "https://192.168.1.1",
+        cert_fingerprints: ["sha256:AB:CD:EF:..."])
 
-      {:ok, info} = UnifiApi.detect(client)
-      # %{style: :udm, network_prefix: "/proxy/network/integration",
+      {:ok, info} = UnifiApi.detect(probe)
+      # %{style: :udm,
+      #   network_prefix: "/proxy/network/integration",
       #   protect_prefix: "/proxy/protect/integration",
-      #   v1_prefix: "/proxy/network", auth_path: "/api/auth/login"}
+      #   v1_prefix: "/proxy/network",
+      #   protect_v1_prefix: "/proxy/protect",
+      #   auth_path: "/api/auth/login"}
 
-      # Apply the discovered prefixes to subsequent calls:
-      Application.put_env(:unifi_api, :network_path, info.network_prefix)
-      Application.put_env(:unifi_api, :protect_path, info.protect_prefix)
+      # Apply everything the probe learned by naming the style. Do *not*
+      # write the prefixes into application config: prefixes are resolved
+      # when the client is built, so a runtime `Application.put_env/3` has no
+      # effect on an existing client and races anything still in flight.
+      client =
+        UnifiApi.new(
+          base_url: "https://192.168.1.1",
+          api_key: System.fetch_env!("UNIFI_API_KEY"),
+          style: info.style
+        )
   """
-  @spec detect(Req.Request.t()) :: {:ok, controller_info()} | {:error, term()}
+  @spec detect(Req.Request.t()) :: {:ok, controller_info()} | {:error, UnifiApi.Error.t()}
   def detect(client) do
+    # Route through `Client.raw_get/2` (not `Req.get/2` directly) so any
+    # future Client-level hardening (redaction, retry policy, telemetry)
+    # applies uniformly. Redirects are forced off explicitly in case the
+    # caller passed a client built without `Client.new/1` (Client.new/1
+    # already sets `redirect: false`).
     probe = Req.merge(client, redirect: false)
 
-    case Req.get(probe, url: "/") do
+    case UnifiApi.Client.raw_get(probe, "/") do
       {:ok, %Req.Response{status: status}} when status in [301, 302, 303] ->
         {:ok, info(:cloud_key)}
 
       {:ok, %Req.Response{status: 200}} ->
         {:ok, info(:udm)}
 
+      # Reconciled in v0.4.0: `detect/1` used to answer
+      # `{:error, {:unexpected_status, status, body}}` while `ping/1`
+      # answered `{:error, {status, body}}` for the identical situation.
       {:ok, %Req.Response{status: status, body: body}} ->
-        {:error, {:unexpected_status, status, body}}
+        {:error,
+         %UnifiApi.ApiError{
+           status: status,
+           body_preview: UnifiApi.Client.scrub_body_preview(body)
+         }}
 
       {:error, reason} ->
-        {:error, reason}
+        {:error, UnifiApi.Error.from_transport(reason)}
     end
   end
 
@@ -161,34 +214,44 @@ defmodule UnifiApi do
         {:error, _} -> :unreachable
       end
   """
-  @spec ping(Req.Request.t()) :: :ok | {:error, term()}
+  @spec ping(Req.Request.t()) :: :ok | {:error, UnifiApi.Error.t()}
   def ping(client) do
+    # Same routing decision as `detect/1` — force redirects off for the
+    # probe so 3xx surfaces as a status code rather than being followed.
     probe = Req.merge(client, redirect: false)
 
-    case Req.get(probe, url: "/") do
-      {:ok, %Req.Response{status: status}} when status in 200..399 -> :ok
-      {:ok, %Req.Response{status: status, body: body}} -> {:error, {status, body}}
-      {:error, reason} -> {:error, reason}
+    case UnifiApi.Client.raw_get(probe, "/") do
+      {:ok, %Req.Response{status: status}} when status in 200..399 ->
+        :ok
+
+      {:ok, %Req.Response{status: status, body: body}} ->
+        {:error,
+         %UnifiApi.ApiError{
+           status: status,
+           body_preview: UnifiApi.Client.scrub_body_preview(body)
+         }}
+
+      {:error, reason} ->
+        {:error, UnifiApi.Error.from_transport(reason)}
     end
   end
 
-  defp info(:udm) do
+  # Sourced from `UnifiApi.Client`'s own presets so `detect/1` and `new/1`
+  # can never drift apart. Previously this map set only 2 of the 4 prefixes
+  # a caller needs, so applying its recipe left `protect_v1_prefix` wrong.
+  defp info(style) do
+    client = UnifiApi.Client.new(style: style)
+
     %{
-      style: :udm,
-      network_prefix: "/proxy/network/integration",
-      protect_prefix: "/proxy/protect/integration",
-      v1_prefix: "/proxy/network",
-      auth_path: "/api/auth/login"
+      style: style,
+      network_prefix: UnifiApi.Client.network_prefix(client),
+      protect_prefix: UnifiApi.Client.protect_prefix(client),
+      v1_prefix: UnifiApi.Client.v1_prefix(client),
+      protect_v1_prefix: UnifiApi.Client.protect_v1_prefix(client),
+      auth_path: auth_path(style)
     }
   end
 
-  defp info(:cloud_key) do
-    %{
-      style: :cloud_key,
-      network_prefix: "/integration",
-      protect_prefix: "/integration",
-      v1_prefix: "",
-      auth_path: "/api/login"
-    }
-  end
+  defp auth_path(:udm), do: "/api/auth/login"
+  defp auth_path(:cloud_key), do: "/api/login"
 end

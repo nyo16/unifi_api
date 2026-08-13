@@ -44,6 +44,13 @@ jobs:
       - name: Compile with warnings as errors
         run: mix compile --warnings-as-errors
 
+      # Retired/deprecated-package check. Lives here rather than in the
+      # `hex_vet` job because it needs a resolved dep tree (and the Hex
+      # registry), which this job already fetches; the `hex_vet` job is
+      # deliberately dep-free. Not in `test`, which would run it 3×.
+      - name: Audit deps for retired packages
+        run: mix hex.audit
+
   format:
     name: Formatting
     runs-on: ubuntu-latest
@@ -89,6 +96,69 @@ jobs:
 
       - run: mix deps.get
       - run: mix credo --strict
+
+  hex_vet:
+    name: Hex Vet (sec version ledger)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: erlef/setup-beam@v1
+        with:
+          elixir-version: ${{ env.ELIXIR_VERSION }}
+          otp-version: ${{ env.OTP_VERSION }}
+
+      # No deps are fetched here on purpose: `elixir -e` evaluates the
+      # ledger and the lock file as plain Elixir data, so the gate runs
+      # before (and independently of) any dependency resolution. Using
+      # `mix run` here cannot work — there is no `mix deps.get` step and
+      # `mix run` would try to load/compile the project first.
+      - name: Verify mix.lock against hex_vet.exs floors
+        run: |
+          elixir -e '
+            # `mix.lock` is plain Elixir data: `%{"req": {...}}` is keyword
+            # syntax, so its keys are atoms — same as the ledger keys.
+            # `emit_warnings: false` suppresses the "quotes are not
+            # required" tokenizer warning for all ~25 lock entries.
+            eval = fn path ->
+              path
+              |> File.read!()
+              |> Code.string_to_quoted!(file: path, emit_warnings: false)
+              |> Code.eval_quoted()
+              |> elem(0)
+            end
+
+            lock = eval.("mix.lock")
+            vet = eval.("hex_vet.exs")
+
+            failures =
+              Enum.flat_map(vet, fn {pkg, floor} ->
+                min = String.replace_leading(floor, ">= ", "")
+
+                case Map.get(lock, pkg) do
+                  {:hex, ^pkg, ver, _, _, _, _, _} ->
+                    if Version.compare(ver, min) == :lt, do: [{pkg, ver, floor}], else: []
+
+                  nil ->
+                    [{pkg, :missing_from_lock, floor}]
+
+                  other ->
+                    [{pkg, other, floor}]
+                end
+              end)
+
+            if failures == [] do
+              IO.puts("[hex_vet] OK — all #{length(vet)} vetted deps meet their floor.")
+            else
+              IO.puts("[hex_vet] FAIL — mix.lock violates the security version ledger:")
+
+              for {pkg, ver, floor} <- failures do
+                IO.puts("  - #{pkg}: lock=#{inspect(ver)} does not satisfy #{floor}")
+              end
+
+              System.halt(1)
+            end
+          '
 
   test:
     name: Tests (OTP ${{ matrix.otp }} / Elixir ${{ matrix.elixir }})
@@ -170,7 +240,7 @@ jobs:
   publish:
     name: Publish to Hex
     runs-on: ubuntu-latest
-    needs: [compile, format, credo, test, dialyzer]
+    needs: [compile, format, credo, hex_vet, test, dialyzer]
     if: startsWith(github.ref, 'refs/tags/v')
     steps:
       - uses: actions/checkout@v6

@@ -22,9 +22,7 @@ defmodule UnifiApi.Protect.Events do
       `thumbnail/3` (binary JPEG)
   """
 
-  alias UnifiApi.Client
-
-  @prefix "/proxy/protect"
+  use UnifiApi.Resource, api: :protect_v1
 
   @doc """
   Lists events.
@@ -45,7 +43,7 @@ defmodule UnifiApi.Protect.Events do
       {:ok, events} = UnifiApi.Protect.Events.list(client,
         start: hour_ago, types: ["motion", "smartDetectZone"], limit: 100)
   """
-  @spec list(Req.Request.t(), keyword()) :: {:ok, term()} | {:error, term()}
+  @spec list(Req.Request.t(), keyword()) :: {:ok, term()} | {:error, UnifiApi.Error.t()}
   def list(client, opts \\ []) do
     params =
       []
@@ -55,15 +53,15 @@ defmodule UnifiApi.Protect.Events do
       |> maybe_csv(:types, opts[:types])
       |> maybe_csv(:cameras, opts[:cameras])
 
-    Client.get(client, "#{@prefix}/api/events", params: params)
+    Client.get(client, "#{prefix(client)}/api/events", params: params)
   end
 
   @doc """
   Returns a single event by id.
   """
-  @spec get(Req.Request.t(), String.t()) :: {:ok, term()} | {:error, term()}
+  @spec get(Req.Request.t(), String.t()) :: {:ok, term()} | {:error, UnifiApi.Error.t()}
   def get(client, event_id) do
-    Client.get(client, "#{@prefix}/api/events/#{event_id}")
+    Client.get(client, "#{prefix(client)}/api/events/#{id!(event_id)}")
   end
 
   @doc """
@@ -75,29 +73,24 @@ defmodule UnifiApi.Protect.Events do
       File.write!("event.jpg", jpeg)
   """
   @spec thumbnail(Req.Request.t(), String.t(), keyword()) ::
-          {:ok, binary()} | {:error, term()}
+          {:ok, binary()} | {:error, UnifiApi.Error.t()}
   def thumbnail(client, event_id, opts \\ []) do
     params =
       []
       |> maybe_param(:w, opts[:width])
       |> maybe_param(:h, opts[:height])
 
-    Client.get_raw(client, "#{@prefix}/api/events/#{event_id}/thumbnail", params: params)
+    Client.get_raw(client, "#{prefix(client)}/api/events/#{id!(event_id)}/thumbnail",
+      params: params
+    )
   end
 
   @doc """
   Returns Protect's system event log (firmware updates, NVR events,
   device adoption, etc. — distinct from camera events).
   """
-  @spec system_logs(Req.Request.t()) :: {:ok, term()} | {:error, term()}
+  @spec system_logs(Req.Request.t()) :: {:ok, term()} | {:error, UnifiApi.Error.t()}
   def system_logs(client) do
-    Client.get(client, "#{@prefix}/api/events/system-logs")
+    Client.get(client, "#{prefix(client)}/api/events/system-logs")
   end
-
-  defp maybe_param(params, _key, nil), do: params
-  defp maybe_param(params, key, value), do: [{key, value} | params]
-
-  defp maybe_csv(params, _key, nil), do: params
-  defp maybe_csv(params, _key, []), do: params
-  defp maybe_csv(params, key, list), do: [{key, Enum.join(list, ",")} | params]
 end

@@ -319,4 +319,172 @@ defmodule UnifiApi.FormatterTest do
       assert output =~ "2 rows"
     end
   end
+
+  describe "events/1" do
+    test "outputs an events table with subsystem colour-coding" do
+      data = [
+        %{
+          "datetime" => "2026-08-13T10:00:00Z",
+          "key" => "EVT_WU_Connected",
+          "subsystem" => "wlan",
+          "msg" => "User[aa:bb] has connected to AP[cc:dd]"
+        },
+        %{
+          "datetime" => "2026-08-13T10:05:00Z",
+          "key" => "EVT_SW_Connected",
+          "subsystem" => "lan",
+          "msg" => "Switch[ee:ff] was connected"
+        }
+      ]
+
+      output =
+        capture_io(fn ->
+          assert :ok == Formatter.events(data)
+        end)
+
+      assert output =~ "Events"
+      assert output =~ "datetime"
+      assert output =~ "key"
+      assert output =~ "subsystem"
+      assert output =~ "msg"
+      assert output =~ "EVT_WU_Connected"
+      assert output =~ "has connected to AP[cc:dd]"
+      assert output =~ "EVT_SW_Connected"
+      assert output =~ "2 rows"
+      # `colors: %{"subsystem" => :subsystem}` must actually be wired up:
+      # wlan → magenta, lan → blue.
+      assert output =~ IO.ANSI.magenta()
+      assert output =~ IO.ANSI.blue()
+    end
+  end
+
+  describe "alarms/1" do
+    test "outputs an alarms table with severity colour-coding" do
+      data = [
+        %{
+          "datetime" => "2026-08-13T09:00:00Z",
+          "severity" => "critical",
+          "subsystem" => "wlan",
+          "key" => "EVT_AP_Lost_Contact",
+          "msg" => "AP[cc:dd] was disconnected"
+        }
+      ]
+
+      output =
+        capture_io(fn ->
+          assert :ok == Formatter.alarms(data)
+        end)
+
+      assert output =~ "Alarms"
+      assert output =~ "severity"
+      assert output =~ "critical"
+      assert output =~ "EVT_AP_Lost_Contact"
+      assert output =~ "AP[cc:dd] was disconnected"
+      assert output =~ "1 rows"
+      # severity critical → red, subsystem wlan → magenta.
+      assert output =~ IO.ANSI.red()
+      assert output =~ IO.ANSI.magenta()
+    end
+
+    test "unwraps a %{\"data\" => [...]} response" do
+      wrapped = %{
+        "meta" => %{"rc" => "ok"},
+        "data" => [
+          %{"datetime" => "2026-08-13T09:00:00Z", "severity" => "warn", "key" => "EVT_IPS_Alert"}
+        ]
+      }
+
+      output =
+        capture_io(fn ->
+          assert :ok == Formatter.alarms(wrapped)
+        end)
+
+      assert output =~ "EVT_IPS_Alert"
+      assert output =~ "1 rows"
+      assert output =~ IO.ANSI.yellow()
+    end
+  end
+
+  describe "clients_live/1" do
+    test "outputs a live-clients table with rssi and satisfaction colouring" do
+      data = [
+        %{
+          "hostname" => "iphone-15",
+          "mac" => "aa:bb:cc:dd:ee:01",
+          "ip" => "192.168.1.100",
+          "signal" => -45,
+          "satisfaction" => 98,
+          "essid" => "HomeWiFi",
+          "ap_name" => "Living Room"
+        },
+        %{
+          "hostname" => "laptop",
+          "mac" => "aa:bb:cc:dd:ee:02",
+          "ip" => "192.168.1.101",
+          "signal" => -82,
+          "satisfaction" => 31,
+          "essid" => "HomeWiFi",
+          "ap_name" => "Garage"
+        }
+      ]
+
+      output =
+        capture_io(fn ->
+          assert :ok == Formatter.clients_live(data)
+        end)
+
+      assert output =~ "Clients (live)"
+      assert output =~ "hostname"
+      assert output =~ "signal"
+      assert output =~ "satisfaction"
+      assert output =~ "essid"
+      assert output =~ "ap_name"
+      assert output =~ "iphone-15"
+      assert output =~ "-45"
+      assert output =~ "98"
+      assert output =~ "Living Room"
+      assert output =~ "laptop"
+      assert output =~ "Garage"
+      assert output =~ "2 rows"
+      # signal -45 → green (>= -60), satisfaction 31 → red (< 50).
+      assert output =~ IO.ANSI.green()
+      assert output =~ IO.ANSI.red()
+    end
+  end
+
+  describe "anomalies/1" do
+    test "outputs an anomalies table and blanks missing columns" do
+      data = [
+        %{
+          "datetime" => "2026-08-13T08:00:00Z",
+          "anomaly" => "dns_failure",
+          "mac" => "aa:bb:cc:dd:ee:03",
+          "ap" => "cc:dd:ee:ff:00:11",
+          "count" => 7
+        },
+        # No "ap" key: `get_value/2` must render it as an empty cell
+        # rather than crashing or printing "nil".
+        %{
+          "datetime" => "2026-08-13T08:30:00Z",
+          "anomaly" => "sta_assoc_failure",
+          "mac" => "aa:bb:cc:dd:ee:04",
+          "count" => 2
+        }
+      ]
+
+      output =
+        capture_io(fn ->
+          assert :ok == Formatter.anomalies(data)
+        end)
+
+      assert output =~ "Anomalies"
+      assert output =~ "anomaly"
+      assert output =~ "count"
+      assert output =~ "dns_failure"
+      assert output =~ "cc:dd:ee:ff:00:11"
+      assert output =~ "sta_assoc_failure"
+      assert output =~ "2 rows"
+      refute output =~ "nil"
+    end
+  end
 end

@@ -6,7 +6,7 @@ defmodule UnifiApi.Network.Clients do
   and other details.
   """
 
-  alias UnifiApi.Client
+  use UnifiApi.Resource, api: :network
 
   @doc """
   Lists all connected clients on a site.
@@ -30,18 +30,39 @@ defmodule UnifiApi.Network.Clients do
       # Paginate through all clients
       {:ok, page} = UnifiApi.Network.Clients.list(client, site_id, limit: 50, offset: 0)
   """
-  @spec list(Req.Request.t(), String.t(), keyword()) :: {:ok, term()} | {:error, term()}
+  @spec list(Req.Request.t(), String.t(), keyword()) ::
+          {:ok, term()} | {:error, UnifiApi.Error.t()}
   def list(client, site_id, opts \\ []) do
-    Client.get(client, "#{prefix()}/v1/sites/#{site_id}/clients", opts)
+    Client.get(client, "#{prefix(client)}/v1/sites/#{id!(site_id)}/clients", opts)
   end
 
   @doc """
   Returns a lazy stream that auto-paginates through all clients on a site.
 
+  ## Error contract
+
+  A mid-stream error does **not** raise by default: the stream halts and
+  yields `{:error, %UnifiApi.StreamError{}, last_offset}` as its final
+  element, so the enumerable is heterogeneous. Match the tail:
+
+      case Enum.to_list(stream) do
+        items when is_list(items) ->
+          case List.last(items) do
+            {:error, error, cursor} -> {:error, error, cursor}
+            _ -> {:ok, items}
+          end
+      end
+
+  Pass `raise_errors: true` to raise `UnifiApi.StreamError` instead.
+
   ## Options
 
     * `:limit` — items per page (default: 200)
     * `:filter` — UniFi filter expression
+    * `:max_pages` — halt after this many successful pages (default: unbounded).
+    * `:max_items` — halt once this many items have been yielded (default: unbounded).
+    * `:raise_errors` — raise `UnifiApi.StreamError` on error instead of
+      yielding the error tuple (default: `false`).
 
   ## Examples
 
@@ -49,14 +70,13 @@ defmodule UnifiApi.Network.Clients do
       UnifiApi.Network.Clients.stream(client, site_id, filter: "type.eq(WIRELESS)")
       |> Enum.to_list()
 
-      # Count all connected clients
-      UnifiApi.Network.Clients.stream(client, site_id)
+      # Count all connected clients (an error tail would inflate the count,
+      # so raise instead)
+      UnifiApi.Network.Clients.stream(client, site_id, raise_errors: true)
       |> Enum.count()
   """
   @spec stream(Req.Request.t(), String.t(), keyword()) :: Enumerable.t()
   def stream(client, site_id, opts \\ []) do
-    Client.stream(client, "#{prefix()}/v1/sites/#{site_id}/clients", opts)
+    Client.stream(client, "#{prefix(client)}/v1/sites/#{id!(site_id)}/clients", opts)
   end
-
-  defp prefix, do: Client.network_prefix()
 end
