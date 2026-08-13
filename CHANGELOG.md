@@ -5,7 +5,11 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.4.0] - 2026-08-13
+
+> **Upgrading from 0.3.0?** This release is deliberately breaking. See
+> [UPGRADING.md](UPGRADING.md) for a step-by-step migration guide with
+> before/after examples for every incompatibility below.
 
 ### Added
 
@@ -121,6 +125,149 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - README: expanded "Self-Signed Certificates" section covering all three
   TLS modes (`verify_ssl: false`, fingerprint pinning, real CA), with an
   `openssl` recipe for extracting the fingerprint.
+- `UnifiApi.ApiError` and `UnifiApi.TransportError` — the two error structs
+  that were missing, completing the `UnifiApi.Error.t()` umbrella.
+- `UnifiApi.Error` — the umbrella type plus `from_transport/1`.
+- `:style` option on `UnifiApi.new/1` (`:udm` | `:cloud_key`) selecting all
+  four path prefixes at once, plus per-prefix `:network_path`,
+  `:protect_path`, `:v1_path`, `:protect_v1_path` overrides.
+- `UnifiApi.Client.prefix/2`, `network_prefix/1`, `protect_prefix/1`,
+  `v1_prefix/1`, `protect_v1_prefix/1`, and `style/1` — the client-aware
+  replacements for the removed 0-arity prefix functions.
+- `:connect_timeout` option on `UnifiApi.new/1` (default 5_000ms), also
+  settable with `config :unifi_api, connect_timeout: ms`.
+- `:finch` option on `UnifiApi.new/1` accepting the name of a pool you
+  started yourself. Mutually exclusive with the TLS and connect-timeout
+  options, which then belong on your own pool; combining them raises
+  rather than silently dropping your transport settings.
+- `opts \\ []` on ten paginated `list/*` — Protect `Chimes`, `Viewers`,
+  `Lights`, `Sensors`, `Liveviews` and Network `ActiveLeases`,
+  `PortForward`, `PortAnomalies`, `RogueAP`, `UPS`. Validated with
+  `Keyword.validate!/2`, so an unknown key raises `ArgumentError`.
+- `protect_v1_prefix` in `UnifiApi.detect/1`'s `controller_info`, which
+  previously reported only 2 of the 4 prefixes a caller needs. `info.style`
+  now feeds straight back into `UnifiApi.new/1`.
+- `@type t` on `UnifiApi.StreamError`, clearing the project's only dialyzer
+  error (`defexception` never emits one).
+- Every resource `stream/*` `@doc` now documents the error contract: the
+  enumerable is heterogeneous by default and its last element may be
+  `{:error, %UnifiApi.StreamError{}, cursor}`.
+- A real-TLS-handshake test harness (`test/support/tls_server.ex` plus
+  committed certificate fixtures). The suite previously reached `:ssl`
+  nowhere, which is how the pinning defects below shipped.
+
+### Changed
+
+- **Breaking:** the `req` dependency requirement moved from `~> 0.6` to
+  `~> 0.7`. Consumers must allow req 0.7 — a locked `~> 0.6` in your own
+  `mix.exs` will block resolution. Transitively this bumps the lock from
+  req 0.6.3 → 0.7.2, finch 0.21.0 → 0.23.0, mint 1.7.1 → 1.9.3, and
+  hpax 1.0.3 → 1.0.4. Run `mix deps.update req` after upgrading.
+- **Breaking:** all errors are now one of five structs, `UnifiApi.Error.t()`,
+  replacing ten ad-hoc shapes. `{:error, {status, body}}` becomes
+  `%UnifiApi.ApiError{}`; `{:error, {:unifi_error, msg}}` becomes
+  `%UnifiApi.ApiError{code: msg}`; a bare `%Req.TransportError{}` becomes
+  `%UnifiApi.TransportError{}`. Raw response bodies are no longer retained —
+  only a scrubbed, truncated `body_preview`.
+- **Breaking:** `UnifiApi.detect/1` and `UnifiApi.ping/1` returned different
+  shapes for the identical situation and are now reconciled on
+  `%UnifiApi.ApiError{}`.
+- **Breaking:** `UnifiApi.Client.network_prefix/0`, `protect_prefix/0`,
+  `v1_prefix/0` and `protect_v1_prefix/0` are removed in favour of arity-1
+  versions taking the client. Prefixes are resolved once in `new/1` and
+  carried on the struct, so a UDM client and a Cloud Key client can finally
+  coexist in one VM. The `Application` env keys still work.
+- **Breaking:** `Network.Events`, `Alarms`, `IDS`, `ClientsHistory` and
+  `SystemLog` `stream/3` now honour `:max_pages`, `:max_items` and
+  `:raise_errors`, which they previously discarded in silence. Code that
+  passed `max_items:` and was ignored will now be capped — correct, but a
+  behaviour change. Unknown option keys raise `ArgumentError`.
+- **Breaking:** the ten paginated `list/*` are documented as returning the
+  first page only; use the matching `stream/*` for full enumeration.
+- **Breaking:** `Protect.Cameras.ptz_patrol_start/3`, `ptz_goto/3` and
+  `Network.Devices.execute_port_action/5` now guard their integer path
+  segments; a non-integer raises `FunctionClauseError`.
+- `UnifiApi.Auth.Session.client/1` and `csrf_token/1` are lock-free
+  `:persistent_term` reads with no `GenServer.call`. Callers previously
+  queued behind a re-login's blocking HTTP round trip.
+- `Session.refresh/2` and `relogin/2` take an optional timeout, default
+  60_000ms. `refresh/1`'s old 5s default reliably raised `exit(:timeout)`
+  while the session process carried on working.
+- Concurrent `Session.relogin/1` calls are coalesced: a request carrying a
+  timestamp older than the last successful login is answered `:ok` without
+  logging in again. On expiry every consumer sees a 401 at once, which used
+  to become N sequential full logins.
+- Server-dictated retry sleeps are clamped to 300s. `Retry-After: 3600`
+  previously parked the calling process for an hour inside what reads as a
+  bounded `Req.get/2` — `:receive_timeout` does not cover the retry sleep.
+- New internal `UnifiApi.Resource` macro replaces 37 copies of
+  `defp prefix`, 20 of `defp maybe_param`, and shortens 115 inline
+  `Client.validate_id!/1` calls. Internal, but it is why every resource
+  module's diff is large.
+- `mix.exs` `package/0` gained a `files:` allow-list, so the tarball no
+  longer ships `priv/` (a 4.4 MB dialyzer PLT). It is now ~70 KB.
+- The `hex_vet` CI gate fails the build instead of only printing,
+  `publish` depends on it, and `mix hex.audit` runs in CI.
+
+### Fixed
+
+- An unparseable `Retry-After` no longer raises; it falls back to the
+  bounded default.
+- `scrub_body_preview/1` truncates before scrubbing. Producing a 128-char
+  preview from an 897 KB body cost ~32ms and ~2.6 MB of garbage on every
+  401/403/429; it is now ~24µs.
+- `:cert_fingerprints` no longer puts the 162-certificate OS trust store
+  into Req's Finch pool key, which Req hashes on **every** request:
+  measured 476 KB serialized and ~2.4ms of CPU per request, now 364 bytes
+  and ~2µs.
+- A CSRF rotation that does not change the token no longer rewrites
+  `:persistent_term`. Each write triggers a global scan of every process
+  (~169µs with 2000 live processes) and controllers echo the header on
+  essentially every response.
+- A rotated CSRF token is now published synchronously by the response step
+  rather than via a cast, closing a window in which the next request from
+  the same process injected the token the controller had just replaced.
+- `nil` from `config :unifi_api, verify_ssl: nil` no longer reads as
+  "disabled" and silently downgrades TLS to `verify: :verify_none`.
+
+### Security
+
+- **Certificate pinning did not work and did not protect anyone.** Three
+  defects, all found by driving a real TLS handshake (CWE-295):
+  1. The code set `server_name`, which is not an `:ssl` option. `:ssl`
+     forwarded it to `gen_tcp:connect/4`, which raised `:badarg` — so
+     **every** pinned connection failed before sending a byte.
+  2. The `verify_fun` returned `{:valid, state}` for
+     `{:bad_cert, :selfsigned_peer}` unconditionally and only checked the
+     fingerprint in the `:valid_peer` clause, which OTP never reaches for a
+     self-signed peer. **Any self-signed certificate was accepted whatever
+     its fingerprint** — a total bypass of the advertised guarantee.
+  3. A custom `verify_fun` replaces OTP's hostname check, so no hostname
+     verification was happening either.
+  The pin is now the trust anchor, every `:bad_cert` decision consults it
+  and fails closed, and hostname verification is enforced for trust
+  inherited from a pinned CA. See UPGRADING.md — pinning a leaf behind an
+  unknown private CA is now correctly rejected.
+- The API key no longer lives in a header on the client struct; a request
+  step closing over it injects it at send time. Req's `Inspect` redacts only
+  `authorization`, and the client is argument one of every public function,
+  so `x-api-key` previously reached every stack frame, `dbg/1` call, crash
+  log, and error-tracker breadcrumb (CWE-522 / CWE-209).
+- `UnifiApi.Auth.Session` implements `format_status/1`, so `:gen_server`'s
+  abnormal-termination log no longer dumps the session cookie, the CSRF
+  token, or the plaintext credentials captured by the deprecated
+  `:username`/`:password` closure (CWE-209 / CWE-532).
+- Three integer path segments were interpolated into request paths without
+  validation while sibling id arguments went through `validate_id!/1`. A
+  consumer forwarding an HTTP parameter handed an attacker authenticated
+  SSRF against the controller's own API (CWE-22 / OWASP A03).
+
+### Removed
+
+- `UnifiApi.Client.network_prefix/0`, `protect_prefix/0`, `v1_prefix/0`,
+  `protect_v1_prefix/0` — replaced by the arity-1 forms.
+- `lib/unifi_api/application.ex`. A library must not ship an `Application`
+  callback; consumers supervise `UnifiApi.Auth.Session` themselves.
 
 ### Notes
 
@@ -196,7 +343,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Resources) and Protect (Cameras, NVR, Sensors, Lights, Chimes, Viewers,
   Liveviews) modules.
 
-[Unreleased]: https://github.com/nyo16/unifi_api/compare/v0.3.0...HEAD
+[0.4.0]: https://github.com/nyo16/unifi_api/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/nyo16/unifi_api/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/nyo16/unifi_api/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/nyo16/unifi_api/releases/tag/v0.1.0

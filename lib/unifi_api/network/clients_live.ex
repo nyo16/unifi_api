@@ -48,7 +48,7 @@ defmodule UnifiApi.Network.ClientsLive do
   > field as optional.
   """
 
-  alias UnifiApi.Client
+  use UnifiApi.Resource, api: :network_v1
 
   @doc """
   Lists currently-connected clients with full statistics.
@@ -63,9 +63,9 @@ defmodule UnifiApi.Network.ClientsLive do
       |> Enum.sort_by(& &1["signal"])
       |> Enum.take(10)
   """
-  @spec list(Req.Request.t(), String.t()) :: {:ok, term()} | {:error, term()}
+  @spec list(Req.Request.t(), String.t()) :: {:ok, term()} | {:error, UnifiApi.Error.t()}
   def list(client, site_id) do
-    Client.get_v1(client, "#{prefix()}/api/s/#{site_id}/stat/sta")
+    Client.get_v1(client, "#{prefix(client)}/api/s/#{id!(site_id)}/stat/sta")
   end
 
   @doc """
@@ -79,7 +79,8 @@ defmodule UnifiApi.Network.ClientsLive do
 
     * `:within_hours` — only include clients seen within the last N hours.
   """
-  @spec list_all(Req.Request.t(), String.t(), keyword()) :: {:ok, term()} | {:error, term()}
+  @spec list_all(Req.Request.t(), String.t(), keyword()) ::
+          {:ok, term()} | {:error, UnifiApi.Error.t()}
   def list_all(client, site_id, opts \\ []) do
     params =
       case opts[:within_hours] do
@@ -87,8 +88,6 @@ defmodule UnifiApi.Network.ClientsLive do
         n -> [{:within, n}]
       end
 
-    Client.get_v1(client, "#{prefix()}/api/s/#{site_id}/stat/alluser", params: params)
+    Client.get_v1(client, "#{prefix(client)}/api/s/#{id!(site_id)}/stat/alluser", params: params)
   end
-
-  defp prefix, do: Client.v1_prefix()
 end

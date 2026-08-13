@@ -15,7 +15,7 @@ defmodule UnifiApi.Network.DNS do
     * `FORWARD_DOMAIN` — domain forwarding
   """
 
-  alias UnifiApi.Client
+  use UnifiApi.Resource, api: :network
 
   @doc """
   Lists all DNS policies on a site.
@@ -28,9 +28,10 @@ defmodule UnifiApi.Network.DNS do
 
       {:ok, policies} = UnifiApi.Network.DNS.list(client, site_id)
   """
-  @spec list(Req.Request.t(), String.t(), keyword()) :: {:ok, term()} | {:error, term()}
+  @spec list(Req.Request.t(), String.t(), keyword()) ::
+          {:ok, term()} | {:error, UnifiApi.Error.t()}
   def list(client, site_id, opts \\ []) do
-    Client.get(client, "#{prefix()}/v1/sites/#{site_id}/dns/policies", opts)
+    Client.get(client, "#{prefix(client)}/v1/sites/#{id!(site_id)}/dns/policies", opts)
   end
 
   @doc """
@@ -40,9 +41,13 @@ defmodule UnifiApi.Network.DNS do
 
       {:ok, policy} = UnifiApi.Network.DNS.get(client, site_id, policy_id)
   """
-  @spec get(Req.Request.t(), String.t(), String.t()) :: {:ok, term()} | {:error, term()}
+  @spec get(Req.Request.t(), String.t(), String.t()) ::
+          {:ok, term()} | {:error, UnifiApi.Error.t()}
   def get(client, site_id, policy_id) do
-    Client.get(client, "#{prefix()}/v1/sites/#{site_id}/dns/policies/#{policy_id}")
+    Client.get(
+      client,
+      "#{prefix(client)}/v1/sites/#{id!(site_id)}/dns/policies/#{id!(policy_id)}"
+    )
   end
 
   @doc """
@@ -64,9 +69,9 @@ defmodule UnifiApi.Network.DNS do
         value: "app.local"
       })
   """
-  @spec create(Req.Request.t(), String.t(), map()) :: {:ok, term()} | {:error, term()}
+  @spec create(Req.Request.t(), String.t(), map()) :: {:ok, term()} | {:error, UnifiApi.Error.t()}
   def create(client, site_id, body) do
-    Client.post(client, "#{prefix()}/v1/sites/#{site_id}/dns/policies", body)
+    Client.post(client, "#{prefix(client)}/v1/sites/#{id!(site_id)}/dns/policies", body)
   end
 
   @doc """
@@ -78,9 +83,14 @@ defmodule UnifiApi.Network.DNS do
         value: "192.168.1.51"
       })
   """
-  @spec update(Req.Request.t(), String.t(), String.t(), map()) :: {:ok, term()} | {:error, term()}
+  @spec update(Req.Request.t(), String.t(), String.t(), map()) ::
+          {:ok, term()} | {:error, UnifiApi.Error.t()}
   def update(client, site_id, policy_id, body) do
-    Client.put(client, "#{prefix()}/v1/sites/#{site_id}/dns/policies/#{policy_id}", body)
+    Client.put(
+      client,
+      "#{prefix(client)}/v1/sites/#{id!(site_id)}/dns/policies/#{id!(policy_id)}",
+      body
+    )
   end
 
   @doc """
@@ -90,23 +100,52 @@ defmodule UnifiApi.Network.DNS do
 
       {:ok, _} = UnifiApi.Network.DNS.delete(client, site_id, policy_id)
   """
-  @spec delete(Req.Request.t(), String.t(), String.t()) :: {:ok, term()} | {:error, term()}
+  @spec delete(Req.Request.t(), String.t(), String.t()) ::
+          {:ok, term()} | {:error, UnifiApi.Error.t()}
   def delete(client, site_id, policy_id) do
-    Client.delete(client, "#{prefix()}/v1/sites/#{site_id}/dns/policies/#{policy_id}")
+    Client.delete(
+      client,
+      "#{prefix(client)}/v1/sites/#{id!(site_id)}/dns/policies/#{id!(policy_id)}"
+    )
   end
 
   @doc """
   Returns a lazy stream that auto-paginates through all DNS policies.
 
+  ## Error contract
+
+  A mid-stream error does **not** raise by default: the stream halts and
+  yields `{:error, %UnifiApi.StreamError{}, last_offset}` as its final
+  element, so the enumerable is heterogeneous. Match the tail:
+
+      case Enum.to_list(stream) do
+        items when is_list(items) ->
+          case List.last(items) do
+            {:error, error, cursor} -> {:error, error, cursor}
+            _ -> {:ok, items}
+          end
+      end
+
+  Pass `raise_errors: true` to raise `UnifiApi.StreamError` instead.
+
+  ## Options
+
+    * `:max_pages` — halt after this many successful pages (default: unbounded).
+    * `:max_items` — halt once this many items have been yielded (default: unbounded).
+    * `:raise_errors` — raise `UnifiApi.StreamError` on error instead of
+      yielding the error tuple (default: `false`).
+
   ## Examples
 
-      UnifiApi.Network.DNS.stream(client, site_id)
+      UnifiApi.Network.DNS.stream(client, site_id, raise_errors: true)
       |> Enum.group_by(& &1["type"])
   """
   @spec stream(Req.Request.t(), String.t(), keyword()) :: Enumerable.t()
   def stream(client, site_id, opts \\ []) do
-    Client.stream(client, "#{prefix()}/v1/sites/#{site_id}/dns/policies", opts)
+    Client.stream(
+      client,
+      "#{prefix(client)}/v1/sites/#{id!(site_id)}/dns/policies",
+      opts
+    )
   end
-
-  defp prefix, do: Client.network_prefix()
 end

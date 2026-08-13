@@ -44,9 +44,9 @@ defmodule UnifiApi.Auth.Cookie do
 
     * Read-only requests (GET) work indefinitely — CSRF is only enforced
       on mutating verbs.
-    * If a write returns 403, call `refresh_csrf/2` (issues a lightweight
-      GET and updates the token from the response header) or simply call
-      `login/4` again.
+    * If a write returns 403, call `refresh_csrf/1` (issues a lightweight
+      GET against `/` and updates the token from the response header) or
+      simply call `login/4` again.
 
   > **Note:** This module is implemented to the documented and observed
   > shape of the UniFi login endpoints. It has been unit-tested against
@@ -77,7 +77,7 @@ defmodule UnifiApi.Auth.Cookie do
     * `{:error, term()}` — transport or unexpected response.
   """
   @spec login(Req.Request.t(), String.t(), String.t(), keyword()) ::
-          {:ok, Req.Request.t()} | {:error, term()}
+          {:ok, Req.Request.t()} | {:error, UnifiApi.Error.t()}
   def login(client, username, password, opts \\ []) do
     style = Keyword.get(opts, :style, :udm)
     remember = Keyword.get(opts, :remember, false)
@@ -90,48 +90,89 @@ defmodule UnifiApi.Auth.Cookie do
 
       {:ok, %Req.Response{status: status, body: body}} when status in [401, 403] ->
         reason = if status == 401, do: :unauthorized, else: :forbidden
-        {:error, %AuthError{status: status, reason: reason, body: body}}
+
+        {:error,
+         %AuthError{
+           status: status,
+           reason: reason,
+           body_preview: UnifiApi.Client.scrub_body_preview(body)
+         }}
 
       {:ok, %Req.Response{status: status, body: body}} ->
-        {:error, {status, body}}
+        {:error,
+         %UnifiApi.ApiError{
+           status: status,
+           body_preview: UnifiApi.Client.scrub_body_preview(body)
+         }}
 
       {:error, reason} ->
-        {:error, reason}
+        {:error, UnifiApi.Error.from_transport(reason)}
     end
   end
 
   @doc """
   Logs out and invalidates the controller-side session.
 
-  Best-effort — the client struct is not modified, since `Req.Request` is
-  not mutated in place. Discard the request after calling this.
+  Returns:
+
+    * `:ok` for 2xx — caller may safely discard the request struct.
+    * `{:error, :not_logged_in}` for 401/403 — the session was already
+      gone (expired, controller reboot, etc.). Treat as success if the
+      end goal is "session is gone on the controller side".
+    * `{:error, %UnifiApi.ApiError{}}` for other HTTP statuses — typically a
+      500 (controller fault) or 4xx that isn't an auth rejection.
+
+  Best-effort — the client struct is not modified, since `Req.Request`
+  is not mutated in place. Discard the request after calling this.
   """
-  @spec logout(Req.Request.t(), keyword()) :: :ok | {:error, term()}
+  @spec logout(Req.Request.t(), keyword()) ::
+          :ok | {:error, :not_logged_in | UnifiApi.Error.t()}
   def logout(client, opts \\ []) do
     style = Keyword.get(opts, :style, :udm)
     path = if style == :udm, do: "/api/auth/logout", else: "/api/logout"
 
     case Req.post(client, url: path, json: %{}) do
-      {:ok, _resp} -> :ok
-      {:error, reason} -> {:error, reason}
+      {:ok, %Req.Response{status: status}}
+      when status in 200..299 ->
+        :ok
+
+      {:ok, %Req.Response{status: status}}
+      when status in [401, 403] ->
+        {:error, :not_logged_in}
+
+      {:ok, %Req.Response{status: status, body: body}} ->
+        {:error,
+         %UnifiApi.ApiError{
+           status: status,
+           body_preview: UnifiApi.Client.scrub_body_preview(body)
+         }}
+
+      {:error, reason} ->
+        {:error, UnifiApi.Error.from_transport(reason)}
     end
   end
 
   @doc """
-  Refreshes the CSRF token by issuing a lightweight GET and capturing the
-  rotated token from the response header.
+  Refreshes the CSRF token by issuing a lightweight GET against the
+  controller root and capturing the rotated token from the response
+  header.
 
-  Useful when a mutating call has returned 403 due to CSRF expiry and you
-  want to retry without a full re-login.
+  Useful when a mutating call has returned 403 due to CSRF expiry and
+  you want to retry without a full re-login.
 
   Returns a new `Req.Request.t()` with the refreshed token; the original
   is unchanged.
-  """
-  @spec refresh_csrf(Req.Request.t(), keyword()) :: {:ok, Req.Request.t()} | {:error, term()}
-  def refresh_csrf(client, opts \\ []) do
-    probe_path = Keyword.get(opts, :probe_path, "/")
 
-    case Req.get(client, url: probe_path) do
+  The probe path is hardcoded to `"/"` — every UniFi controller flavour
+  serves an unauthenticated root that rotates the CSRF cookie/header.
+  Earlier releases accepted a `:probe_path` option, but that opened a
+  path-traversal / SSRF surface (callers could point the session at an
+  arbitrary internal URL) without adding value. Removed in v0.4.0.
+  """
+  @spec refresh_csrf(Req.Request.t()) ::
+          {:ok, Req.Request.t()} | {:error, UnifiApi.Error.t()}
+  def refresh_csrf(client) do
+    case Req.get(client, url: "/") do
       {:ok, %Req.Response{} = resp} ->
         case extract_csrf(resp) do
           nil -> {:ok, client}
@@ -139,7 +180,7 @@ defmodule UnifiApi.Auth.Cookie do
         end
 
       {:error, reason} ->
-        {:error, reason}
+        {:error, UnifiApi.Error.from_transport(reason)}
     end
   end
 

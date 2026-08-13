@@ -69,9 +69,25 @@ defmodule UnifiApiTest do
       assert {:ok, %{style: :cloud_key}} = UnifiApi.detect(client)
     end
 
-    test "returns {:error, {:unexpected_status, _, _}} on other statuses" do
+    test "returns %ApiError{} on other statuses" do
       client = test_client(fn conn -> Plug.Conn.send_resp(conn, 500, "boom") end)
-      assert {:error, {:unexpected_status, 500, _}} = UnifiApi.detect(client)
+
+      # Reconciled with ping/1: the identical case now yields the same struct.
+      assert {:error, %UnifiApi.ApiError{status: 500}} = UnifiApi.detect(client)
+    end
+
+    # `detect/1` reaches the network through `Client.raw_get/2`, which
+    # returns Req's own `{:error, %Req.TransportError{}}` unwrapped; the
+    # wrapping is `detect/1`'s job. Broader per-entry-point transport
+    # coverage lives in `test/unifi_api/transport_error_test.exs`.
+    test "returns %TransportError{} when the controller is unreachable" do
+      client = test_client(fn conn -> Req.Test.transport_error(conn, :econnrefused) end)
+
+      assert {:error,
+              %UnifiApi.TransportError{
+                reason: :econnrefused,
+                original: %Req.TransportError{reason: :econnrefused}
+              }} = UnifiApi.detect(client)
     end
   end
 
@@ -88,9 +104,24 @@ defmodule UnifiApiTest do
       end
     end
 
-    test "returns {:error, {status, body}} for 4xx / 5xx" do
+    test "returns %ApiError{} for 4xx / 5xx" do
       client = test_client(fn conn -> Plug.Conn.send_resp(conn, 503, "down") end)
-      assert {:error, {503, _}} = UnifiApi.ping(client)
+
+      assert {:error, %UnifiApi.ApiError{status: 503, body_preview: preview}} =
+               UnifiApi.ping(client)
+
+      # Body is scrubbed/truncated into a preview string, never the raw body.
+      assert preview =~ "down"
+    end
+
+    test "returns %TransportError{} when the probe times out" do
+      client = test_client(fn conn -> Req.Test.transport_error(conn, :timeout) end)
+
+      assert {:error,
+              %UnifiApi.TransportError{
+                reason: :timeout,
+                original: %Req.TransportError{reason: :timeout}
+              }} = UnifiApi.ping(client)
     end
   end
 end

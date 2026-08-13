@@ -31,7 +31,17 @@ defmodule UnifiApi.Network.Events do
   > missing or shaped differently on your controller.
   """
 
-  alias UnifiApi.Client
+  use UnifiApi.Resource, api: :network_v1
+
+  # `stream/3`'s full option set: the module-specific keys plus the
+  # `Client.stream_v1/3` pass-through keys. Both lists are forwarded
+  # explicitly rather than splatting `opts`, so a module-specific key
+  # like `:within_hours` can never leak into `Client`, and
+  # `Keyword.validate!/2` turns a typo such as `max_item:` into an
+  # `ArgumentError` instead of a silently dropped cap that would page
+  # the entire event log.
+  @stream_pass_through [:max_pages, :max_items, :raise_errors]
+  @stream_opts [:within_hours, :limit | @stream_pass_through]
 
   @doc """
   Lists site events.
@@ -43,6 +53,10 @@ defmodule UnifiApi.Network.Events do
     * `:limit` — max number of events to return (sent as `_limit=N`)
     * `:start` — pagination offset within the result set (sent as
       `_start=N`)
+    * `:raw` — when `true`, return the raw response body binary
+      (skips JSON decoding and v1 envelope unwrap). Useful for very
+      long event windows where the decoded `meta`/`data` envelope
+      would be memory-heavy.
 
   ## Examples
 
@@ -54,7 +68,8 @@ defmodule UnifiApi.Network.Events do
       events
       |> Enum.filter(&(&1["subsystem"] == "wlan"))
   """
-  @spec list(Req.Request.t(), String.t(), keyword()) :: {:ok, term()} | {:error, term()}
+  @spec list(Req.Request.t(), String.t(), keyword()) ::
+          {:ok, term()} | {:error, UnifiApi.Error.t()}
   def list(client, site_id, opts \\ []) do
     params =
       []
@@ -62,22 +77,57 @@ defmodule UnifiApi.Network.Events do
       |> maybe_param(:_limit, opts[:limit])
       |> maybe_param(:_start, opts[:start])
 
-    Client.get_v1(client, "#{prefix()}/api/s/#{site_id}/stat/event", params: params)
+    Client.get_v1(
+      client,
+      "#{prefix(client)}/api/s/#{id!(site_id)}/stat/event",
+      Keyword.take(opts, [:raw]) ++ [params: params]
+    )
   end
 
   @doc """
   Returns a lazy stream that auto-paginates events via `_start` / `_limit`.
 
+  ## Error contract
+
+  A mid-stream error does **not** raise by default: the stream halts and
+  yields `{:error, %UnifiApi.StreamError{}, last_start}` as its final element,
+  so the enumerable is heterogeneous and `Enum.map(stream, & &1["key"])`
+  crashes on a transient 500. Match the tail:
+
+      items = Enum.to_list(stream)
+
+      case List.last(items) do
+        {:error, error, cursor} -> {:error, error, cursor}
+        _ -> {:ok, items}
+      end
+
+  Pass `raise_errors: true` to raise `UnifiApi.StreamError` instead.
+
   ## Options
 
     * `:within_hours` — passed through to every page request as
       `within=N`.
-    * `:limit` — page size (default 500).
+    * `:limit` — page size (default 200).
+    * `:max_pages` — halt after this many successful pages (default:
+      unbounded).
+    * `:max_items` — halt once this many events have been yielded; the
+      final page is truncated to fit (default: unbounded).
+    * `:raise_errors` — when `true`, raise `UnifiApi.StreamError` on a
+      mid-stream error instead of yielding `{:error, reason, last_start}`
+      as the final element (default: `false`).
+
+  `:max_pages`, `:max_items` and `:raise_errors` are forwarded verbatim
+  to `UnifiApi.Client.stream_v1/3` and behave exactly as they do in
+  `UnifiApi.Client.stream/3`. Any other key raises `ArgumentError`.
 
   ## Examples
 
       # Stream every event in the last 24 hours
       UnifiApi.Network.Events.stream(authed, "default", within_hours: 24)
+      |> Enum.to_list()
+
+      # Bound the work server-side: at most 100 events, at most 2 requests
+      UnifiApi.Network.Events.stream(authed, "default", max_items: 100, max_pages: 2)
       |> Enum.to_list()
 
       # Stop early — only fetches one page
@@ -86,16 +136,14 @@ defmodule UnifiApi.Network.Events do
   """
   @spec stream(Req.Request.t(), String.t(), keyword()) :: Enumerable.t()
   def stream(client, site_id, opts \\ []) do
+    opts = Keyword.validate!(opts, @stream_opts)
     base_params = maybe_param([], :within, opts[:within_hours])
 
-    Client.stream_v1(client, "#{prefix()}/api/s/#{site_id}/stat/event",
-      limit: opts[:limit] || 500,
-      params: base_params
+    Client.stream_v1(
+      client,
+      "#{prefix(client)}/api/s/#{id!(site_id)}/stat/event",
+      [limit: opts[:limit] || 200, params: base_params] ++
+        Keyword.take(opts, @stream_pass_through)
     )
   end
-
-  defp maybe_param(params, _key, nil), do: params
-  defp maybe_param(params, key, value), do: [{key, value} | params]
-
-  defp prefix, do: Client.v1_prefix()
 end

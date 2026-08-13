@@ -19,15 +19,15 @@ defmodule UnifiApi.Network.Traffic do
   (`tx_bytes`, `rx_bytes`, plus `country`/`mac` for the variant).
   """
 
-  alias UnifiApi.Client
+  use UnifiApi.Resource, api: :network_v1
 
   @doc """
   Returns per-client traffic breakdown over the time window.
   """
   @spec by_client(Req.Request.t(), String.t(), keyword()) ::
-          {:ok, term()} | {:error, term()}
+          {:ok, term()} | {:error, UnifiApi.Error.t()}
   def by_client(client, site_id, opts \\ []) do
-    Client.get_v1(client, "#{prefix()}/v2/api/site/#{site_id}/traffic",
+    Client.get_v1(client, "#{prefix(client)}/v2/api/site/#{id!(site_id)}/traffic",
       params: build_params(opts)
     )
   end
@@ -36,9 +36,11 @@ defmodule UnifiApi.Network.Traffic do
   Returns destination-country traffic breakdown over the time window.
   """
   @spec by_country(Req.Request.t(), String.t(), keyword()) ::
-          {:ok, term()} | {:error, term()}
+          {:ok, term()} | {:error, UnifiApi.Error.t()}
   def by_country(client, site_id, opts \\ []) do
-    Client.get_v1(client, "#{prefix()}/v2/api/site/#{site_id}/country-traffic",
+    Client.get_v1(
+      client,
+      "#{prefix(client)}/v2/api/site/#{id!(site_id)}/country-traffic",
       params: build_params(opts)
     )
   end
@@ -49,9 +51,4 @@ defmodule UnifiApi.Network.Traffic do
     |> maybe_param(:end, opts[:end])
     |> maybe_param(:interval, opts[:interval])
   end
-
-  defp maybe_param(params, _key, nil), do: params
-  defp maybe_param(params, key, value), do: [{key, value} | params]
-
-  defp prefix, do: Client.v1_prefix()
 end

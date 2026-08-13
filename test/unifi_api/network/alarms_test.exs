@@ -47,4 +47,41 @@ defmodule UnifiApi.Network.AlarmsTest do
 
     assert {:ok, _} = Alarms.archive(client, "default", "alarm-1")
   end
+
+  test "stream/3 auto-paginates alarms via _start/_limit" do
+    client =
+      test_client(fn conn ->
+        assert conn.request_path == "/proxy/network/api/s/default/list/alarm"
+        params = Plug.Conn.fetch_query_params(conn).query_params
+        assert params["_limit"] == "2"
+
+        # A full page (== _limit) keeps the stream going; the short
+        # second page terminates it.
+        data =
+          case params["_start"] do
+            "0" -> [%{"_id" => "a1"}, %{"_id" => "a2"}]
+            "2" -> [%{"_id" => "a3"}]
+          end
+
+        Req.Test.json(conn, %{"meta" => %{"rc" => "ok"}, "data" => data})
+      end)
+
+    assert Alarms.stream(client, "default", limit: 2) |> Enum.to_list() ==
+             [%{"_id" => "a1"}, %{"_id" => "a2"}, %{"_id" => "a3"}]
+  end
+
+  test "stream/3 forwards :archived to every page and defaults _limit to 500" do
+    client =
+      test_client(fn conn ->
+        params = Plug.Conn.fetch_query_params(conn).query_params
+        assert params["archived"] == "true"
+        assert params["_limit"] == "500"
+        assert params["_start"] == "0"
+
+        Req.Test.json(conn, %{"meta" => %{"rc" => "ok"}, "data" => [%{"_id" => "a9"}]})
+      end)
+
+    assert Alarms.stream(client, "default", archived: true) |> Enum.to_list() ==
+             [%{"_id" => "a9"}]
+  end
 end
